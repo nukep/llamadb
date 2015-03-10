@@ -26,7 +26,7 @@ impl<'a> Tokens<'a> {
         RuleError::ExpectingFirst(expecting_message, self.peek_clone())
     }
 
-    pub fn pop_expecting(&mut self, token: &Token, expecting_message: &'static str) -> RuleResult<()> {
+    pub fn pop_token_expecting(&mut self, token: &Token, expecting_message: &'static str) -> RuleResult<()> {
         if self.pop_if_token(token) { Ok(()) }
         else { Err(self.expecting(expecting_message)) }
     }
@@ -127,21 +127,13 @@ impl<'a> Tokens<'a> {
         }
     }
 
-    pub fn pop(&mut self) -> RuleResult<&'a Token> {
+    pub fn pop_expecting(&mut self, expecting_message: &'static str) -> RuleResult<&'a Token> {
         if self.tokens.len() > 0 {
             let token = &self.tokens[0];
             self.tokens = &self.tokens[1..];
             Ok(token)
         } else {
-            Err(RuleError::NoMoreTokens)
-        }
-    }
-
-    pub fn peek(&self) -> RuleResult<&'a Token> {
-        if self.tokens.len() > 0 {
-            Ok(&self.tokens[0])
-        } else {
-            Err(RuleError::NoMoreTokens)
+            Err(self.expecting(expecting_message))
         }
     }
 }
