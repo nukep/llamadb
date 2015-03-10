@@ -77,7 +77,8 @@ pub struct SelectStatement {
     pub from: From,
     pub where_expr: Option<Expression>,
     pub group_by: Vec<Expression>,
-    pub having: Option<Expression>
+    pub having: Option<Expression>,
+    pub order_by: Vec<OrderingTerm>
 }
 
 #[derive(Debug)]
@@ -100,6 +101,18 @@ pub struct Join {
     pub operator: JoinOperator,
     pub table: TableOrSubquery,
     pub on: Expression
+}
+
+#[derive(Debug)]
+pub enum Order {
+    Ascending,
+    Descending
+}
+
+#[derive(Debug)]
+pub struct OrderingTerm {
+    pub expr: Expression,
+    pub order: Order
 }
 
 #[derive(Debug)]

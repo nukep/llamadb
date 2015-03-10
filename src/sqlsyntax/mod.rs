@@ -17,7 +17,7 @@ mod test {
     #[test]
     fn test_sql_parser() {
         parse("SELECT *, (name + 4), count(*) AS amount FROM (SELECT * FROM foo), table1 GROUP BY name HAVING count(*) > 5;");
-        parse("SELECT * FROM foo INNER JOIN bar ON foo.id = bar.fooId;");
+        parse("SELECT * FROM foo INNER JOIN bar ON foo.id = bar.fooId ORDER BY a DESC, b;");
 
         parse("INSERT INTO table1 VALUES (1, 2), (3, 4), (5, 6);");
         parse("INSERT INTO table1 (a, b) VALUES ('foo' || 'bar', 2);");

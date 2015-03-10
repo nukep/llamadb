@@ -396,12 +396,21 @@ impl Rule for SelectStatement {
             (Vec::new(), None)
         };
 
+        let order_by = if tokens.pop_if_token(&Token::Order) {
+            try_notfirst!(tokens.pop_token_expecting(&Token::By, "BY after ORDER"));
+
+            try_notfirst!(OrderingTerm::parse_comma_delimited(tokens))
+        } else {
+            Vec::new()
+        };
+
         Ok(SelectStatement {
             result_columns: result_columns,
             from: from,
             where_expr: where_expr,
             group_by: group_by,
-            having: having
+            having: having,
+            order_by: order_by
         })
     }
 }
@@ -463,6 +472,27 @@ impl Rule for Join {
             operator: operator,
             table: table,
             on: on
+        })
+    }
+}
+
+impl Rule for OrderingTerm {
+    type Output = OrderingTerm;
+    fn parse(tokens: &mut Tokens) -> RuleResult<OrderingTerm> {
+        let expr = try!(Expression::parse(tokens));
+
+        let order = if tokens.pop_if_token(&Token::Asc) {
+            Order::Ascending
+        } else if tokens.pop_if_token(&Token::Desc) {
+            Order::Descending
+        } else {
+            // Ascending order by default
+            Order::Ascending
+        };
+
+        Ok(OrderingTerm {
+            expr: expr,
+            order: order
         })
     }
 }
