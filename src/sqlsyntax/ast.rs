@@ -25,6 +25,7 @@ pub enum BinaryOp {
 #[derive(Debug, PartialEq)]
 pub enum Expression {
     Ident(String),
+    IdentsDotDelimited(Vec<String>),
     StringLiteral(String),
     Number(String),
     /// name(argument1, argument2, argument3...)
@@ -82,7 +83,23 @@ pub struct SelectStatement {
 #[derive(Debug)]
 pub enum From {
     Cross(Vec<TableOrSubquery>),
-    // TODO: add joins
+    Join {
+        table: TableOrSubquery,
+        joins: Vec<Join>
+    }
+}
+
+#[derive(Debug)]
+pub enum JoinOperator {
+    Left,
+    Inner
+}
+
+#[derive(Debug)]
+pub struct Join {
+    pub operator: JoinOperator,
+    pub table: TableOrSubquery,
+    pub on: Expression
 }
 
 #[derive(Debug)]

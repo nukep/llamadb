@@ -31,7 +31,6 @@ impl<'a> Tokens<'a> {
         else { Err(self.expecting(expecting_message)) }
     }
 
-    #[must_use]
     pub fn pop_if_token(&mut self, token: &Token) -> bool {
         if self.tokens.len() > 0 {
             if &self.tokens[0] == token {

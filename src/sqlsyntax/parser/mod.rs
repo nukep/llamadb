@@ -82,7 +82,8 @@ trait RuleExt: Rule {
         CommaDelimitedRule::<Self>::parse(tokens)
     }
 
-    fn parse_series<'a>(tokens: &mut Tokens<'a>) -> RuleResult<Vec<Self::Output>> {
+    /// Match zero or more consecutive occurances of the rule
+    fn parse_series_star<'a>(tokens: &mut Tokens<'a>) -> RuleResult<Vec<Self::Output>> {
         let mut v = Vec::new();
 
         while let Some(value) = try!(Self::parse_lookahead(tokens)) {
@@ -274,8 +275,15 @@ impl Expression {
                     Ok(Expression::FunctionCall { name: ident, arguments: arguments })
                 }
             } else if tokens.pop_if_token(&Token::Dot) {
-                // Member access
-                unimplemented!()
+                let mut idents = Vec::new();
+                idents.push(ident);
+                idents.push(try_notfirst!(tokens.pop_ident_expecting("ident after .")));
+
+                while tokens.pop_if_token(&Token::Dot) {
+                    idents.push(try_notfirst!(tokens.pop_ident_expecting("ident after .")));
+                }
+
+                Ok(Expression::IdentsDotDelimited(idents))
             } else {
                 Ok(Expression::Ident(ident))
             }
@@ -405,7 +413,57 @@ impl Rule for From {
 
         let tables = try_notfirst!(TableOrSubquery::parse_comma_delimited(tokens));
 
-        Ok(From::Cross(tables))
+        if tables.len() == 1 {
+            // Could add a JOIN clause
+            let joins = try_notfirst!(Join::parse_series_star(tokens));
+
+            if joins.len() > 0 {
+                let table = tables.into_iter().nth(0).unwrap();
+
+                Ok(From::Join {
+                    table: table,
+                    joins: joins
+                })
+            } else {
+                Ok(From::Cross(tables))
+            }
+        } else {
+            Ok(From::Cross(tables))
+        }
+    }
+}
+
+impl Rule for JoinOperator {
+    type Output = JoinOperator;
+    fn parse(tokens: &mut Tokens) -> RuleResult<JoinOperator> {
+        if tokens.pop_if_token(&Token::Left) {
+            // "Outer" is optional. Pop if it exists.
+            tokens.pop_if_token(&Token::Outer);
+
+            try_notfirst!(tokens.pop_token_expecting(&Token::Join, "JOIN after LEFT (OUTER)"));
+            Ok(JoinOperator::Left)
+        } else if tokens.pop_if_token(&Token::Inner) {
+            try_notfirst!(tokens.pop_token_expecting(&Token::Join, "JOIN after INNER"));
+            Ok(JoinOperator::Inner)
+        } else {
+            Err(tokens.expecting("Join operator (LEFT or INNER)"))
+        }
+    }
+}
+
+impl Rule for Join {
+    type Output = Join;
+    fn parse(tokens: &mut Tokens) -> RuleResult<Join> {
+        let operator = try!(JoinOperator::parse(tokens));
+        let table = try_notfirst!(TableOrSubquery::parse(tokens));
+        try_notfirst!(tokens.pop_token_expecting(&Token::On, "ON"));
+        let on = try_notfirst!(Expression::parse(tokens));
+
+        Ok(Join {
+            operator: operator,
+            table: table,
+            on: on
+        })
     }
 }
 
@@ -517,7 +575,7 @@ impl Rule for CreateTableColumn {
             None
         };
 
-        let constraints = try_notfirst!(CreateTableColumnConstraint::parse_series(tokens));
+        let constraints = try_notfirst!(CreateTableColumnConstraint::parse_series_star(tokens));
 
         Ok(CreateTableColumn {
             column_name: column_name,
