@@ -25,11 +25,11 @@ sql!(db,
         id          UUID PRIMARY KEY,
         username    VARCHAR,
         password    BCRYPT
-    );"
+    )"
 ).unwrap();
 
 let row = sql!(db,
-    "INSERT INTO account(username, password) VALUES(?, ?);",
+    "INSERT INTO account(username, password) VALUES(?, ?)",
     "John", bcrypt("secretpassword")
 ).unwrap();
 

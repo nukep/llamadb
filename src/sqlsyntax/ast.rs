@@ -21,11 +21,10 @@ pub enum BinaryOp {
     Concatenate,
 }
 
-
 #[derive(Debug, PartialEq)]
 pub enum Expression {
     Ident(String),
-    IdentsDotDelimited(Vec<String>),
+    IdentMember(String, String),
     StringLiteral(String),
     Number(String),
     /// name(argument1, argument2, argument3...)
@@ -41,20 +40,21 @@ pub enum Expression {
         lhs: Box<Expression>,
         rhs: Box<Expression>,
         op: BinaryOp
-    }
+    },
+    Subquery(Box<SelectStatement>)
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Table {
     pub database_name: Option<String>,
     pub table_name: String
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum TableOrSubquery {
     Subquery {
         subquery: Box<SelectStatement>,
-        alias: Option<String>
+        alias: String
     },
     Table {
         table: Table,
@@ -71,7 +71,7 @@ pub enum SelectColumn {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct SelectStatement {
     pub result_columns: Vec<SelectColumn>,
     pub from: From,
@@ -81,7 +81,7 @@ pub struct SelectStatement {
     pub order_by: Vec<OrderingTerm>
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum From {
     Cross(Vec<TableOrSubquery>),
     Join {
@@ -90,26 +90,26 @@ pub enum From {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum JoinOperator {
     Left,
     Inner
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Join {
     pub operator: JoinOperator,
     pub table: TableOrSubquery,
     pub on: Expression
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Order {
     Ascending,
     Descending
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct OrderingTerm {
     pub expr: Expression,
     pub order: Order

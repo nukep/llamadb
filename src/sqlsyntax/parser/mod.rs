@@ -19,10 +19,10 @@ impl fmt::Display for RuleError {
         use self::RuleError::*;
 
         match self {
-            &ExpectingFirst(s, Some(ref token)) => write!(f, "Expecting {}; got {:?}", s, token),
-            &Expecting(s, Some(ref token)) => write!(f, "Expecting {}; got {:?}", s, token),
-            &ExpectingFirst(s, None) => write!(f, "Expecting {}; got no more tokens", s),
-            &Expecting(s, None) => write!(f, "Expecting {}; got no more tokens", s)
+            &ExpectingFirst(s, Some(ref token)) => write!(f, "Expected {}; got {:?}", s, token),
+            &Expecting(s, Some(ref token)) => write!(f, "Expected {}; got {:?}", s, token),
+            &ExpectingFirst(s, None) => write!(f, "Expected {}; got no more tokens", s),
+            &Expecting(s, None) => write!(f, "Expected {}; got no more tokens", s)
         }
     }
 }
@@ -257,9 +257,18 @@ impl Expression {
                 expr: Box::new(e),
                 op: UnaryOp::Negate
             })
-        } else if let Some(encased_expression) = try!(ParensSurroundRule::<Expression>::parse_lookahead(tokens)) {
-            // Expression is surrounded in parens for precedence.
-            Ok(encased_expression)
+        } else if tokens.pop_if_token(&Token::LeftParen) {
+            if let Some(subquery) = try!(SelectStatement::parse_lookahead(tokens)) {
+                // Expression is a subquery.
+                try!(tokens.pop_token_expecting(&Token::RightParen, ") after subquery"));
+                Ok(Expression::Subquery(Box::new(subquery)))
+            } else if let Some(encased_expression) = try!(Expression::parse_lookahead(tokens)) {
+                // Expression is surrounded in parens for precedence.
+                try!(tokens.pop_token_expecting(&Token::RightParen, ") after expression"));
+                Ok(encased_expression)
+            } else {
+                Err(tokens.expecting("expression or subquery after ("))
+            }
         } else if let Some(ident) = tokens.pop_if_ident() {
             if tokens.pop_if_token(&Token::LeftParen) {
                 // Function call
@@ -275,15 +284,9 @@ impl Expression {
                     Ok(Expression::FunctionCall { name: ident, arguments: arguments })
                 }
             } else if tokens.pop_if_token(&Token::Dot) {
-                let mut idents = Vec::new();
-                idents.push(ident);
-                idents.push(try_notfirst!(tokens.pop_ident_expecting("ident after .")));
+                let ident2 = try_notfirst!(tokens.pop_ident_expecting("ident after ."));
 
-                while tokens.pop_if_token(&Token::Dot) {
-                    idents.push(try_notfirst!(tokens.pop_ident_expecting("ident after .")));
-                }
-
-                Ok(Expression::IdentsDotDelimited(idents))
+                Ok(Expression::IdentMember(ident, ident2))
             } else {
                 Ok(Expression::Ident(ident))
             }
@@ -328,7 +331,7 @@ impl Rule for TableOrSubquery {
     fn parse(tokens: &mut Tokens) -> RuleResult<TableOrSubquery> {
         if let Some(select) = try!(ParensSurroundRule::<SelectStatement>::parse_lookahead(tokens)) {
             // Subquery
-            let alias = try_notfirst!(AsAlias::parse_lookahead(tokens));
+            let alias = try_notfirst!(AsAlias::parse(tokens));
 
             Ok(TableOrSubquery::Subquery {
                 subquery: Box::new(select),
@@ -649,38 +652,51 @@ impl Rule for CreateStatement {
 }
 
 impl Rule for Statement {
-    type Output = Option<Statement>;
-    fn parse(tokens: &mut Tokens) -> RuleResult<Option<Statement>> {
-        let statement = if let Some(select) = try!(SelectStatement::parse_lookahead(tokens)) {
-            Some(Statement::Select(select))
+    type Output = Statement;
+    fn parse(tokens: &mut Tokens) -> RuleResult<Statement> {
+        if let Some(select) = try!(SelectStatement::parse_lookahead(tokens)) {
+            Ok(Statement::Select(select))
         } else if let Some(insert) = try!(InsertStatement::parse_lookahead(tokens)) {
-            Some(Statement::Insert(insert))
+            Ok(Statement::Insert(insert))
         } else if let Some(create) = try!(CreateStatement::parse_lookahead(tokens)) {
-            Some(Statement::Create(create))
+            Ok(Statement::Create(create))
         } else {
-            None
-        };
-
-        if let Some(statement) = statement {
-            try_notfirst!(tokens.pop_token_expecting(&Token::Semicolon, "semicolon"));
-            Ok(Some(statement))
-        } else {
-            try!(tokens.pop_token_expecting(&Token::Semicolon, "semicolon"));
-            Ok(None)
+            Err(tokens.expecting("SELECT, INSERT, or CREATE statement"))
         }
     }
 }
 
-pub fn parse(tokens_slice: &[Token]) -> Result<Vec<Statement>, RuleError> {
-    let mut tokens = Tokens::new(tokens_slice);
+struct Statements;
 
-    let mut statements = Vec::new();
+impl Rule for Statements {
+    type Output = Vec<Statement>;
+    fn parse(tokens: &mut Tokens) -> RuleResult<Vec<Statement>> {
+        let mut statements = Vec::new();
 
-    while let Some(value) = try!(Statement::parse_lookahead(&mut tokens)) {
-        if let Some(stmt) = value {
+        while let Some(stmt) = try!(Statement::parse_lookahead(tokens)) {
             statements.push(stmt);
+            try!(tokens.pop_token_expecting(&Token::Semicolon, "semicolon"));
         }
-    }
 
+        Ok(statements)
+    }
+}
+
+pub fn parse_statement(tokens_slice: &[Token]) -> Result<Statement, RuleError> {
+    let mut tokens = Tokens::new(tokens_slice);
+    let statement = try!(Statement::parse(&mut tokens));
+
+    // Pop a semicolon if it's there
+    tokens.pop_if_token(&Token::Semicolon);
+
+    try!(tokens.expect_no_more_tokens());
+    Ok(statement)
+}
+
+/// Parses a series of statements separated by semicolons
+pub fn parse_statements(tokens_slice: &[Token]) -> Result<Vec<Statement>, RuleError> {
+    let mut tokens = Tokens::new(tokens_slice);
+    let statements = try!(Statements::parse(&mut tokens));
+    try!(tokens.expect_no_more_tokens());
     Ok(statements)
 }

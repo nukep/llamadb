@@ -26,7 +26,7 @@ pub enum Token {
     LeftBracket, RightBracket,
     Dot, Comma, Semicolon,
 
-    Ampersand, Pipe,
+    Ampersand, Pipe, ForwardSlash,
 
     /// ||, the concatenate operator
     DoublePipe,
@@ -62,6 +62,7 @@ fn character_to_token(c: char) -> Option<Token> {
         '&' => Ampersand,
         '|' => Pipe,
         '*' => Asterisk,
+        '/' => ForwardSlash,
         '?' => PreparedStatementPlaceholder,
         _ => return None
     })
@@ -71,7 +72,7 @@ fn word_to_token(word: String) -> Token {
     use self::Token::*;
 
     // Make all letters lowercase for comparison
-    let word_cmp: String = word.chars().map( |c| c.to_lowercase() ).collect();
+    let word_cmp: String = word.chars().flat_map( |c| c.to_lowercase() ).collect();
 
     match word_cmp.as_slice() {
         "select" => Select,
@@ -125,6 +126,7 @@ enum LexerState {
     /// Disambiguate an operator sequence.
     OperatorDisambiguate { first: char },
     LineComment,
+    BlockComment { was_prev_char_asterisk: bool }
 }
 
 struct Lexer {
@@ -159,7 +161,7 @@ impl Lexer {
                 use self::Token::*;
 
                 match character_to_token(c) {
-                    Some(LessThan) | Some(GreaterThan) | Some(Minus) | Some(Pipe) => {
+                    Some(LessThan) | Some(GreaterThan) | Some(Minus) | Some(Pipe) | Some(ForwardSlash) => {
                         Ok(LexerState::OperatorDisambiguate { first: c })
                     },
                     Some(token) => {
@@ -296,6 +298,9 @@ impl Lexer {
                         ('-', '-') => {
                             LexerState::LineComment
                         },
+                        ('/', '*') => {
+                            LexerState::BlockComment { was_prev_char_asterisk: false }
+                        },
                         _ => {
                             self.tokens.push(character_to_token(first).unwrap());
                             self.no_state(c).unwrap()
@@ -310,6 +315,13 @@ impl Lexer {
                 match c {
                     Some('\n') => LexerState::NoState,
                     _ => LexerState::LineComment
+                }
+            },
+            LexerState::BlockComment { was_prev_char_asterisk } => {
+                if was_prev_char_asterisk && c == Some('/') {
+                    LexerState::NoState
+                } else {
+                    LexerState::BlockComment { was_prev_char_asterisk: c == Some('*') }
                 }
             }
         };
@@ -419,5 +431,20 @@ mod test {
                 GreaterThan, NotEqual, GreaterThan, GreaterThan, LessThan, GreaterThan
             ]
         );
+    }
+
+    #[test]
+    fn test_sql_lexer_blockcomment() {
+        use super::Token::*;
+
+        assert_eq!(parse("hello/*/a/**/,/*there, */world"), vec![
+            id("hello"), Comma, id("world")
+        ]);
+
+        assert_eq!(parse("/ */"), vec![ForwardSlash, Asterisk, ForwardSlash]);
+
+        assert_eq!(parse("/**/"), vec![]);
+
+        assert_eq!(parse("a/* test\ntest** /\nb*/c"), vec![id("a"), id("c")]);
     }
 }

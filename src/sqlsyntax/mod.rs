@@ -5,18 +5,23 @@ pub mod ast;
 mod lexer;
 mod parser;
 
-pub fn parse(query: &str) -> Vec<ast::Statement> {
+pub fn parse_statement(query: &str) -> ast::Statement {
     let tokens = lexer::parse(query);
-    parser::parse(tokens.as_slice()).unwrap()
+    parser::parse_statement(tokens.as_slice()).unwrap()
+}
+
+pub fn parse_statements(query: &str) -> Vec<ast::Statement> {
+    let tokens = lexer::parse(query);
+    parser::parse_statements(tokens.as_slice()).unwrap()
 }
 
 #[cfg(test)]
 mod test {
-    use super::parse;
+    use super::parse_statement as parse;
 
     #[test]
     fn test_sql_parser() {
-        parse("SELECT *, (name + 4), count(*) AS amount FROM (SELECT * FROM foo), table1 GROUP BY name HAVING count(*) > 5;");
+        parse("SELECT *, (name + 4), count(*) AS amount FROM (SELECT * FROM foo) subq, table1 GROUP BY name HAVING count(*) > 5;");
         parse("SELECT * FROM foo INNER JOIN bar ON foo.id = bar.fooId ORDER BY a DESC, b;");
 
         parse("INSERT INTO table1 VALUES (1, 2), (3, 4), (5, 6);");

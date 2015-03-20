@@ -3,3 +3,9 @@
 name = "llamadb"
 version = "0.0.1"
 authors = ["Dan Spencer <dan@atomicpotato.net>"]
+
+[dependencies]
+log = "0.3"
+
+[dev-dependencies]
+env_logger = "0.3"

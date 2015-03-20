@@ -61,7 +61,10 @@ by length instead of lexicographically.
 UTF-8 has the property of lexicographic sorting. Even with extension bytes,
 the string will sort in ascending order of the code points.
 
-The null terminator is needed to indicate the end of the string.
+The null terminator is used to indicate the end of the string, as an
+optimization to prevent reading the last page(s) for the length.
+String is backed with `byte[]`, so the string length + 1 is stored at the end of
+the key. When searching lexicographically, this is ignored.
 It also serves as a separator from other multi-column values in the key.
 
 Longer strings that share the same beginning as another string are sorted after.

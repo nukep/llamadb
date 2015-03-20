@@ -26,6 +26,14 @@ impl<'a> Tokens<'a> {
         RuleError::ExpectingFirst(expecting_message, self.peek_clone())
     }
 
+    pub fn expect_no_more_tokens(&self) -> RuleResult<()> {
+        if self.tokens.len() > 0 {
+            Err(self.expecting("no more tokens"))
+        } else {
+            Ok(())
+        }
+    }
+
     pub fn pop_token_expecting(&mut self, token: &Token, expecting_message: &'static str) -> RuleResult<()> {
         if self.pop_if_token(token) { Ok(()) }
         else { Err(self.expecting(expecting_message)) }

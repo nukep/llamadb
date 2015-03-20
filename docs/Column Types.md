@@ -17,6 +17,31 @@ database, not how said data is serialized or deserialized.
 * `T[N]` - A fixed-length array of types, where `N` is a constant, positive integer.
  * The equivalent of `BINARY(N)` from MySQL would be `byte[N]`
 
+### Dynamic sized bytes
+
+All `byte[]` types have their lengths stored at the end of the key.
+
+The length is stored as a 64-bit integer.
+
+```sql
+CREATE TABLE person(
+    name        STRING,     -- backed by byte[]
+    age         U8,
+    description STRING      -- backed by byte[]
+);
+```
+
+Key layout:
+```
+rowid: 8 bytes
+name: 1 or more bytes (includes null terminator)
+age: 1 byte
+description: 1 or more bytes (includes null terminator)
+name.length: 8 bytes
+description.length: 8 bytes
+```
+
+
 ## Abstract types
 
 Abstract types are typed wrappers for `byte[]` or `byte[N]` primitives.
@@ -60,6 +85,13 @@ Types:
 * `scrypt`
 * `pbkdf2`
 
+Aliases:
+
+* `int` = `i32`
+* `integer` = `i32`
+* `float` = `f32`
+* `varchar` = `string`
+
 Any `byte[]` or `byte[N]` column can be converted to alternative representations:
 
 ```sql
@@ -92,3 +124,10 @@ SELECT json_column.raw.hex from MY_TABLE;
 SELECT json_column.raw.base64 from MY_TABLE;
 # 'gadpc19qc29uww==' (varchar)
 ```
+
+
+
+
+## Nullable types
+
+If a type is nullable, it requires an additional byte.
