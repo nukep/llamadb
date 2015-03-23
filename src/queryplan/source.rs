@@ -3,20 +3,15 @@ use identifier::Identifier;
 use super::columnnames::ColumnNames;
 use super::sexpression::SExpression;
 
-#[derive(Copy)]
-pub struct SourceId {
-    pub id: u32
-}
-
 pub enum TableOrSubquery<'a, DB: DatabaseInfo>
 where <DB as DatabaseInfo>::Table: 'a
 {
     Table {
-        source_id: SourceId,
+        source_id: u32,
         table: &'a <DB as DatabaseInfo>::Table
     },
     Subquery {
-        source_id: SourceId,
+        source_id: u32,
         expr: SExpression<'a, DB>,
         out_column_names: ColumnNames
     }
@@ -33,7 +28,7 @@ where <DB as DatabaseInfo>::Table: 'a, 'a: 'b
 impl<'a, 'b, DB: DatabaseInfo> SourceScope<'a, 'b, DB>
 where <DB as DatabaseInfo>::Table: 'a, 'a: 'b
 {
-    pub fn get_column_offset(&self, column_name: &Identifier) -> Option<(SourceId, u32)> {
+    pub fn get_column_offset(&self, column_name: &Identifier) -> Option<(u32, u32)> {
         let mut candidates: Vec<_> = Vec::new();
 
         for table in &self.tables {
@@ -62,7 +57,7 @@ where <DB as DatabaseInfo>::Table: 'a, 'a: 'b
         }
     }
 
-    pub fn get_table_column_offset(&self, table_name: &Identifier, column_name: &Identifier) -> Option<(SourceId, u32)> {
+    pub fn get_table_column_offset(&self, table_name: &Identifier, column_name: &Identifier) -> Option<(u32, u32)> {
         let mut candidates: Vec<_> = Vec::new();
 
         let tables = self.table_aliases.iter().enumerate().filter_map(|(i, name)| {

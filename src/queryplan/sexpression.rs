@@ -1,6 +1,5 @@
 use databaseinfo::{DatabaseInfo, TableInfo};
 use identifier::Identifier;
-use super::source::SourceId;
 
 use std::fmt;
 
@@ -9,11 +8,11 @@ where <DB as DatabaseInfo>::Table: 'a
 {
     Scan {
         table: &'a <DB as DatabaseInfo>::Table,
-        source_id: SourceId,
+        source_id: u32,
         yield_fn: Box<SExpression<'a, DB>>
     },
     Map {
-        source_id: SourceId,
+        source_id: u32,
         yield_in_fn: Box<SExpression<'a, DB>>,
         yield_out_fn: Box<SExpression<'a, DB>>
     },
@@ -21,7 +20,7 @@ where <DB as DatabaseInfo>::Table: 'a
         fields: Vec<SExpression<'a, DB>>
     },
     ColumnField {
-        source_id: SourceId,
+        source_id: u32,
         column_offset: u32
     },
     If {
@@ -54,12 +53,12 @@ where <DB as DatabaseInfo>::Table: 'a
 
         match self {
             &SExpression::Scan { table, source_id, ref yield_fn } => {
-                try!(writeln!(f, "(scan `{}` :source_id {}", table.get_name(), source_id.id));
+                try!(writeln!(f, "(scan `{}` :source_id {}", table.get_name(), source_id));
                 try!(yield_fn.format(f, indent + 1));
                 write!(f, ")")
             },
             &SExpression::Map { source_id, ref yield_in_fn, ref yield_out_fn } => {
-                try!(writeln!(f, "(map :source_id {}", source_id.id));
+                try!(writeln!(f, "(map :source_id {}", source_id));
                 try!(yield_in_fn.format(f, indent + 1));
                 try!(writeln!(f, ""));
                 try!(yield_out_fn.format(f, indent + 1));
@@ -76,7 +75,7 @@ where <DB as DatabaseInfo>::Table: 'a
                 write!(f, ")")
             },
             &SExpression::ColumnField { source_id, column_offset } => {
-                write!(f, "(column-field :source_id {} :column_offset {})", source_id.id, column_offset)
+                write!(f, "(column-field :source_id {} :column_offset {})", source_id, column_offset)
             },
             &SExpression::If { ref predicate, ref yield_fn } => {
                 try!(writeln!(f, "(if "));
@@ -93,7 +92,7 @@ where <DB as DatabaseInfo>::Table: 'a
                 write!(f, ")")
             },
             &SExpression::Value(ref v) => {
-                write!(f, "({})", v)
+                write!(f, "{}", v)
             }
         }
     }

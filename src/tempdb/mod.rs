@@ -40,7 +40,7 @@ pub enum ColumnValue {
 impl fmt::Display for ColumnValue {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
-            &ColumnValue::StringLiteral(ref s) => write!(f, "{}", s),
+            &ColumnValue::StringLiteral(ref s) => write!(f, "\"{}\"", s),
             &ColumnValue::Number(n) => write!(f, "{}", n)
         }
     }

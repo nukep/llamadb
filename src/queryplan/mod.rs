@@ -72,7 +72,7 @@ where <DB as DatabaseInfo>::Table: 'a
         let mut source_id_fn = || {
             let old_source_id = source_id;
             source_id += 1;
-            SourceId { id: old_source_id }
+            old_source_id
         };
 
         QueryPlan::compile_select_recurse(db, stmt, &scope, &mut source_id_fn)
@@ -80,10 +80,8 @@ where <DB as DatabaseInfo>::Table: 'a
 
     fn compile_select_recurse<'b, F>(db: &'a DB, stmt: ast::SelectStatement, scope: &'b SourceScope<'a, 'b, DB>, new_source_id: &mut F)
     -> Result<QueryPlan<'a, DB>, QueryPlanCompileError>
-    where F: FnMut() -> SourceId
+    where F: FnMut() -> u32
     {
-        debug!("{:?}", stmt);
-
         // TODO - avoid naive nested scans when indices are available
 
         // Unimplemented syntaxes: GROUP BY, HAVING, ORDER BY
@@ -257,7 +255,7 @@ where <DB as DatabaseInfo>::Table: 'a
 
     fn ast_expression_to_sexpression<'b, F>(ast: ast::Expression, db: &'a DB, scope: &'b SourceScope<'a, 'b, DB>, new_source_id: &mut F)
     -> Result<SExpression<'a, DB>, QueryPlanCompileError>
-    where F: FnMut() -> SourceId
+    where F: FnMut() -> u32
     {
         use std::borrow::IntoCow;
 
