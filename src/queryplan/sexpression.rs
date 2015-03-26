@@ -1,5 +1,4 @@
 use databaseinfo::{DatabaseInfo, TableInfo};
-use identifier::Identifier;
 
 use std::fmt;
 

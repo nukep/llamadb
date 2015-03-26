@@ -192,7 +192,7 @@ impl TempDb {
     }
 
     fn select(&self, stmt: ast::SelectStatement) -> ExecuteStatementResult {
-        use queryplan::{QueryPlan, QueryPlanCompileError};
+        use queryplan::QueryPlan;
 
         let plan = try!(QueryPlan::compile_select(self, stmt).map_err(|e| format!("{}", e)));
 

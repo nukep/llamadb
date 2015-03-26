@@ -1,6 +1,5 @@
 use super::super::lexer::Token;
-use super::{Rule, RuleExt, RuleError, RuleResult};
-use super::{rule_result_not_first};
+use super::{RuleError, RuleResult};
 
 #[derive(Copy)]
 pub struct Tokens<'a> {

@@ -60,7 +60,7 @@ impl DbType {
     }
 
     pub fn get_default(&self) -> Cow<'static, [u8]> {
-        use std::iter::{IntoIterator, repeat};
+        use std::iter::repeat;
         use std::borrow::Cow::*;
 
         static EMPTY: &'static [u8; 0] = &[];

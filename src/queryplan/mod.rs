@@ -1,4 +1,4 @@
-use databaseinfo::{ColumnInfo, DatabaseInfo, TableInfo, ColumnValueOps};
+use databaseinfo::{DatabaseInfo, TableInfo, ColumnValueOps};
 use identifier::Identifier;
 use sqlsyntax::ast;
 
