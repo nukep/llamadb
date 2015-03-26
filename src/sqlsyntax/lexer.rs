@@ -13,6 +13,7 @@ pub enum Token {
     And, Or,
     Between, In,
     Is, Not, Null,
+    Explain,
 
     // Non-letter tokens
     Equal,
@@ -113,6 +114,7 @@ fn word_to_token(word: String) -> Token {
         "is" => Is,
         "not" => Not,
         "null" => Null,
+        "explain" => Explain,
         _ => Ident(word)
     }
 }
