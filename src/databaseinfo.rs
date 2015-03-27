@@ -6,7 +6,7 @@ use std::fmt;
 /// A read-only interface to information about the database schema.
 pub trait DatabaseInfo {
     type Table: TableInfo;
-    type ColumnValue: ColumnValueOps + fmt::Display + 'static;
+    type ColumnValue: ColumnValueOps + fmt::Display + Clone + 'static;
 
     fn find_table_by_name(&self, name: &Identifier) -> Option<&Self::Table>;
 }

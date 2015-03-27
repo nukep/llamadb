@@ -2,6 +2,7 @@ use databaseinfo::{DatabaseInfo, TableInfo};
 
 use std::fmt;
 
+#[derive(Clone)]
 pub enum SExpression<'a, DB: DatabaseInfo>
 where <DB as DatabaseInfo>::Table: 'a
 {
@@ -97,6 +98,7 @@ where <DB as DatabaseInfo>::Table: 'a
     }
 }
 
+#[derive(Clone)]
 pub enum BinaryOp {
     Equal,
     NotEqual,

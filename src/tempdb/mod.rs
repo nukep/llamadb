@@ -32,6 +32,7 @@ pub struct ResultSet<'a> {
 pub type ExecuteStatementResult<'a> = Result<ExecuteStatementResponse<'a>, String>;
 
 
+#[derive(Clone)]
 pub enum ColumnValue {
     StringLiteral(String),
     Number(u64)
