@@ -5,9 +5,11 @@ use sqlsyntax::ast;
 use std::fmt;
 
 mod columnnames;
+mod execute;
 mod sexpression;
 mod source;
 pub use self::columnnames::*;
+pub use self::execute::*;
 pub use self::sexpression::*;
 use self::source::*;
 
