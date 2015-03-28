@@ -39,4 +39,10 @@ pub trait ColumnValueOps: Sized {
 
     /// Used for predicate logic (such as the entire WHERE expression).
     fn tests_true(&self) -> bool;
+
+    fn equals(&self, rhs: &Self) -> Self;
+    fn not_equals(&self, rhs: &Self) -> Self;
+    fn and(&self, rhs: &Self) -> Self;
+    fn or(&self, rhs: &Self) -> Self;
+    fn concat(&self, rhs: &Self) -> Self;
 }

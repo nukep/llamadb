@@ -34,6 +34,7 @@ pub type ExecuteStatementResult<'a> = Result<ExecuteStatementResponse<'a>, Strin
 
 #[derive(Clone)]
 pub enum ColumnValue {
+    Null,
     StringLiteral(String),
     Number(u64)
 }
@@ -41,9 +42,16 @@ pub enum ColumnValue {
 impl fmt::Display for ColumnValue {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
+            &ColumnValue::Null => write!(f, "NULL"),
             &ColumnValue::StringLiteral(ref s) => write!(f, "\"{}\"", s),
             &ColumnValue::Number(n) => write!(f, "{}", n)
         }
+    }
+}
+
+impl ColumnValue {
+    fn from_bool(value: bool) -> ColumnValue {
+        ColumnValue::Number(if value { 1 } else { 0 })
     }
 }
 
@@ -61,8 +69,58 @@ impl ColumnValueOps for ColumnValue {
 
     fn tests_true(&self) -> bool {
         match self {
+            &ColumnValue::Null => false,
             &ColumnValue::StringLiteral(ref s) => !s.is_empty(),
             &ColumnValue::Number(n) => n != 0
+        }
+    }
+
+    fn equals(&self, rhs: &Self) -> Self {
+        match (self, rhs) {
+            (&ColumnValue::Null, _) | (_, &ColumnValue::Null) => {
+                // NULL does not compare.
+                ColumnValue::Null
+            },
+            (&ColumnValue::StringLiteral(ref l), &ColumnValue::StringLiteral(ref r)) => {
+                ColumnValue::from_bool(l == r)
+            },
+            (&ColumnValue::Number(l), &ColumnValue::Number(r)) => {
+                ColumnValue::from_bool(l == r)
+            },
+            _ => ColumnValue::from_bool(false)
+        }
+    }
+
+    fn not_equals(&self, rhs: &Self) -> Self {
+        match (self, rhs) {
+            (&ColumnValue::Null, _) | (_, &ColumnValue::Null) => {
+                // NULL does not compare.
+                ColumnValue::Null
+            },
+            (&ColumnValue::StringLiteral(ref l), &ColumnValue::StringLiteral(ref r)) => {
+                ColumnValue::from_bool(l != r)
+            },
+            (&ColumnValue::Number(l), &ColumnValue::Number(r)) => {
+                ColumnValue::from_bool(l != r)
+            },
+            _ => ColumnValue::from_bool(true)
+        }
+    }
+
+    fn and(&self, rhs: &Self) -> Self {
+        ColumnValue::from_bool(self.tests_true() && rhs.tests_true())
+    }
+
+    fn or(&self, rhs: &Self) -> Self {
+        ColumnValue::from_bool(self.tests_true() || rhs.tests_true())
+    }
+
+    fn concat(&self, rhs: &Self) -> Self {
+        match (self, rhs) {
+            (&ColumnValue::StringLiteral(ref l), &ColumnValue::StringLiteral(ref r)) => {
+                ColumnValue::StringLiteral(format!("{}{}", l, r))
+            },
+            (e, _) => e.clone()
         }
     }
 }
