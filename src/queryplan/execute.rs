@@ -1,4 +1,5 @@
-use databaseinfo::{DatabaseInfo, ColumnValueOps};
+use columnvalueops::ColumnValueOps;
+use databaseinfo::DatabaseInfo;
 use databasestorage::DatabaseStorage;
 use super::sexpression::SExpression;
 

@@ -5,11 +5,10 @@
 
 use std::borrow::Cow;
 use std::collections::BTreeSet;
-use std::fmt;
 
-use databaseinfo::{DatabaseInfo, TableInfo, ColumnInfo, ColumnValueOps};
+use databaseinfo::{DatabaseInfo, TableInfo, ColumnInfo};
 use identifier::Identifier;
-use types::DbType;
+use types::{DbType, Variant};
 use sqlsyntax::ast;
 
 mod table;
@@ -31,103 +30,9 @@ pub struct ResultSet<'a> {
 
 pub type ExecuteStatementResult<'a> = Result<ExecuteStatementResponse<'a>, String>;
 
-
-#[derive(Clone)]
-pub enum ColumnValue {
-    Null,
-    StringLiteral(String),
-    Number(u64)
-}
-
-impl fmt::Display for ColumnValue {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match self {
-            &ColumnValue::Null => write!(f, "NULL"),
-            &ColumnValue::StringLiteral(ref s) => write!(f, "\"{}\"", s),
-            &ColumnValue::Number(n) => write!(f, "{}", n)
-        }
-    }
-}
-
-impl ColumnValue {
-    fn from_bool(value: bool) -> ColumnValue {
-        ColumnValue::Number(if value { 1 } else { 0 })
-    }
-}
-
-impl ColumnValueOps for ColumnValue {
-    fn from_string_literal(s: Cow<str>) -> Result<ColumnValue, Cow<str>> {
-        Ok(ColumnValue::StringLiteral(s.into_owned()))
-    }
-
-    fn from_number_literal(s: Cow<str>) -> Result<ColumnValue, Cow<str>> {
-        match s.parse() {
-            Ok(number) => Ok(ColumnValue::Number(number)),
-            Err(_) => Err(s)
-        }
-    }
-
-    fn tests_true(&self) -> bool {
-        match self {
-            &ColumnValue::Null => false,
-            &ColumnValue::StringLiteral(ref s) => !s.is_empty(),
-            &ColumnValue::Number(n) => n != 0
-        }
-    }
-
-    fn equals(&self, rhs: &Self) -> Self {
-        match (self, rhs) {
-            (&ColumnValue::Null, _) | (_, &ColumnValue::Null) => {
-                // NULL does not compare.
-                ColumnValue::Null
-            },
-            (&ColumnValue::StringLiteral(ref l), &ColumnValue::StringLiteral(ref r)) => {
-                ColumnValue::from_bool(l == r)
-            },
-            (&ColumnValue::Number(l), &ColumnValue::Number(r)) => {
-                ColumnValue::from_bool(l == r)
-            },
-            _ => ColumnValue::from_bool(false)
-        }
-    }
-
-    fn not_equals(&self, rhs: &Self) -> Self {
-        match (self, rhs) {
-            (&ColumnValue::Null, _) | (_, &ColumnValue::Null) => {
-                // NULL does not compare.
-                ColumnValue::Null
-            },
-            (&ColumnValue::StringLiteral(ref l), &ColumnValue::StringLiteral(ref r)) => {
-                ColumnValue::from_bool(l != r)
-            },
-            (&ColumnValue::Number(l), &ColumnValue::Number(r)) => {
-                ColumnValue::from_bool(l != r)
-            },
-            _ => ColumnValue::from_bool(true)
-        }
-    }
-
-    fn and(&self, rhs: &Self) -> Self {
-        ColumnValue::from_bool(self.tests_true() && rhs.tests_true())
-    }
-
-    fn or(&self, rhs: &Self) -> Self {
-        ColumnValue::from_bool(self.tests_true() || rhs.tests_true())
-    }
-
-    fn concat(&self, rhs: &Self) -> Self {
-        match (self, rhs) {
-            (&ColumnValue::StringLiteral(ref l), &ColumnValue::StringLiteral(ref r)) => {
-                ColumnValue::StringLiteral(format!("{}{}", l, r))
-            },
-            (e, _) => e.clone()
-        }
-    }
-}
-
 impl DatabaseInfo for TempDb {
     type Table = Table;
-    type ColumnValue = ColumnValue;
+    type ColumnValue = Variant;
 
     fn find_table_by_name(&self, name: &Identifier) -> Option<&Table> {
         self.tables.iter().find(|t| &t.name == name)

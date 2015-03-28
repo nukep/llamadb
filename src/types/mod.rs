@@ -1,5 +1,8 @@
 use identifier::Identifier;
 
+mod variant;
+pub use self::variant::Variant;
+
 use std::borrow::Cow;
 
 #[derive(Debug, Copy)]
