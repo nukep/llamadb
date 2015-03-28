@@ -58,6 +58,13 @@ impl ColumnValueOps for ColumnValue {
             Err(_) => Err(s)
         }
     }
+
+    fn tests_true(&self) -> bool {
+        match self {
+            &ColumnValue::StringLiteral(ref s) => !s.is_empty(),
+            &ColumnValue::Number(n) => n != 0
+        }
+    }
 }
 
 impl DatabaseInfo for TempDb {

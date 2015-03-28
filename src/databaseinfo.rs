@@ -36,4 +36,7 @@ pub trait ColumnInfo {
 pub trait ColumnValueOps: Sized {
     fn from_string_literal(s: Cow<str>) -> Result<Self, Cow<str>>;
     fn from_number_literal(s: Cow<str>) -> Result<Self, Cow<str>>;
+
+    /// Used for predicate logic (such as the entire WHERE expression).
+    fn tests_true(&self) -> bool;
 }

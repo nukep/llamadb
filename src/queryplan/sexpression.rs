@@ -98,7 +98,7 @@ where <DB as DatabaseInfo>::Table: 'a
     }
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub enum BinaryOp {
     Equal,
     NotEqual,
