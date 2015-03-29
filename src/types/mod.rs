@@ -7,19 +7,20 @@ use std::borrow::Cow;
 
 #[derive(Debug, Copy)]
 pub enum DbType {
-    /// byte: 8-bit octet
-    Byte,
+    /// A type that only contains the NULL value.
+    Null,
     /// byte[]: dynamic length byte array
     ByteDynamic,
     /// byte[N]: fixed length byte array
     ByteFixed(u64),
 
-    /// uN: unsigned integer with N/8 bytes
-    Unsigned(u8),
-    /// iN: signed integer with N/8 bytes
-    Signed(u8),
-    /// f32: floating point number, single precision
-    F32,
+    /// integer with N/8 bytes
+    Integer {
+        signed: bool,
+        bytes: u8
+    },
+    /// f64: floating point number, double precision
+    F64,
     /// string: utf-8 string
     String,
 }
@@ -27,12 +28,12 @@ pub enum DbType {
 impl DbType {
     pub fn from_identifier(ident: &Identifier, array_size: Option<Option<u64>>) -> Option<DbType> {
         match (ident.as_slice(), array_size) {
-            ("byte", None) => Some(DbType::Byte),
+            ("byte", None) => Some(DbType::Integer { signed: false, bytes: 1 }),
             ("byte", Some(None)) => Some(DbType::ByteDynamic),
             ("byte", Some(Some(v))) => Some(DbType::ByteFixed(v)),
-            ("f32", None) | ("float", None) => Some(DbType::F32),
+            ("f64", None) | ("double", None) => Some(DbType::F64),
             ("string", None) | ("varchar", None) => Some(DbType::String),
-            ("int", None) | ("integer", None) => Some(DbType::Signed(32)),
+            ("int", None) | ("integer", None) => Some(DbType::Integer { signed: true, bytes: 4 }),
             (ident, None) => {
                 if ident.len() >= 2 {
                     let bits: u8 = match ident[1..].parse() {
@@ -50,8 +51,8 @@ impl DbType {
                     };
 
                     match ident.char_at(0) {
-                        'u' => Some(DbType::Unsigned(bytes)),
-                        'i' => Some(DbType::Signed(bytes)),
+                        'u' => Some(DbType::Integer { signed: false, bytes: bytes }),
+                        'i' => Some(DbType::Integer { signed: true, bytes: bytes }),
                         _ => None
                     }
                 } else {
@@ -68,21 +69,18 @@ impl DbType {
 
         static EMPTY: &'static [u8; 0] = &[];
         static ZERO: &'static [u8; 1] = &[0];
-        static F32_ZERO: &'static [u8; 4] = &[0x80, 0x00, 0x00, 0x00];
+        static F64_ZERO: &'static [u8; 8] = &[0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
 
         match self {
-            // Zero
-            &DbType::Byte => Borrowed(ZERO),
+            &DbType::Null => Borrowed(EMPTY),
             // Empty byte array
             &DbType::ByteDynamic => Borrowed(EMPTY),
             // Byte array with all values set to zero
             &DbType::ByteFixed(bytes) => Owned(repeat(0).take(bytes as usize).collect()),
             // Zero
-            &DbType::Unsigned(bytes) => Owned(repeat(0).take(bytes as usize).collect()),
-            // Zero
-            &DbType::Signed(bytes) => Owned(repeat(0).take(bytes as usize).collect()),
+            &DbType::Integer { bytes, .. } => Owned(repeat(0).take(bytes as usize).collect()),
             // Positive zero
-            &DbType::F32 => Borrowed(F32_ZERO),
+            &DbType::F64 => Borrowed(F64_ZERO),
             // Empty string
             &DbType::String => Borrowed(ZERO)
         }
@@ -90,24 +88,22 @@ impl DbType {
 
     pub fn is_valid_length(&self, length: u64) -> bool {
         match self {
-            &DbType::Byte => length == 1,
+            &DbType::Null => length == 0,
             &DbType::ByteDynamic => true,
             &DbType::ByteFixed(bytes) => length == bytes,
-            &DbType::Unsigned(bytes) => length == bytes as u64,
-            &DbType::Signed(bytes) => length == bytes as u64,
-            &DbType::F32 => length == 4,
+            &DbType::Integer { bytes, .. } => length == bytes as u64,
+            &DbType::F64 => length == 8,
             &DbType::String => true
         }
     }
 
     pub fn is_variable_length(&self) -> bool {
         match self {
-            &DbType::Byte => false,
+            &DbType::Null => false,
             &DbType::ByteDynamic => true,
             &DbType::ByteFixed(_) => false,
-            &DbType::Unsigned(_) => false,
-            &DbType::Signed(_) => false,
-            &DbType::F32 => false,
+            &DbType::Integer {..} => false,
+            &DbType::F64 => false,
             &DbType::String => true
         }
     }

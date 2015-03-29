@@ -135,7 +135,7 @@ impl TempDb {
                         return Err(format!("INSERT value contains wrong amount of columns"));
                     }
 
-                    let iter = column_types.iter().enumerate().map(|(i, dbtype)| {
+                    let iter = column_types.iter().enumerate().map(|(i, &dbtype)| {
                         let ast_index = column_index_to_ast_index.get(&i);
 
                         match ast_index {
@@ -201,23 +201,21 @@ impl TempDb {
     }
 }
 
-fn ast_expression_to_data(expr: &ast::Expression, column_type: &DbType, buf: &mut Vec<u8>) {
+fn ast_expression_to_data(expr: &ast::Expression, column_type: DbType, buf: &mut Vec<u8>) {
     use sqlsyntax::ast::Expression::*;
+    use columnvalueops::ColumnValueOps;
+    use std::borrow::IntoCow;
 
-    // XXX: VERY TEMPORARY.
-
-    match (expr, column_type) {
-        (&StringLiteral(ref s), &DbType::String) => {
-            buf.push_all(s.as_bytes());
-            buf.push(0);
+    let value: Variant = match expr {
+        &StringLiteral(ref s) => {
+            ColumnValueOps::from_string_literal(s.as_slice().into_cow()).unwrap()
         },
-        (&Number(ref n), &DbType::Unsigned(bytes)) => {
-            let value: u64 = n.parse().unwrap();
-            buf.extend((0..bytes).map(|i| {
-                let j = (bytes-1)-i;
-                ((value & (0xFF << (j*8))) >> (j*8)) as u8
-            }));
+        &Number(ref n) => {
+            ColumnValueOps::from_number_literal(n.as_slice().into_cow()).unwrap()
         },
         _ => unimplemented!()
-    }
+    };
+
+    let bytes = value.to_bytes(column_type).unwrap();
+    buf.push_all(&bytes);
 }
