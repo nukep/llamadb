@@ -27,6 +27,12 @@ impl fmt::Display for Variant {
     }
 }
 
+impl fmt::Debug for Variant {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "{}", self)
+    }
+}
+
 fn from_bool(value: bool) -> Variant {
     Variant::UnsignedInteger(if value { 1 } else { 0 })
 }

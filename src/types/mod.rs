@@ -97,14 +97,21 @@ impl DbType {
         }
     }
 
-    pub fn is_variable_length(&self) -> bool {
+    pub fn get_fixed_length(&self) -> Option<u64> {
         match self {
-            &DbType::Null => false,
-            &DbType::ByteDynamic => true,
-            &DbType::ByteFixed(_) => false,
-            &DbType::Integer {..} => false,
-            &DbType::F64 => false,
-            &DbType::String => true
+            &DbType::Null => Some(0),
+            &DbType::ByteDynamic => None,
+            &DbType::ByteFixed(n) => Some(n),
+            &DbType::Integer { bytes, ..} => Some(bytes as u64),
+            &DbType::F64 => Some(8),
+            &DbType::String => None
+        }
+    }
+
+    pub fn is_variable_length(&self) -> bool {
+        match self.get_fixed_length() {
+            Some(_) => false,
+            None => true
         }
     }
 }

@@ -6,7 +6,9 @@
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 
+use columnvalueops::ColumnValueOps;
 use databaseinfo::{DatabaseInfo, TableInfo, ColumnInfo};
+use databasestorage::DatabaseStorage;
 use identifier::Identifier;
 use types::{DbType, Variant};
 use sqlsyntax::ast;
@@ -36,6 +38,60 @@ impl DatabaseInfo for TempDb {
 
     fn find_table_by_name(&self, name: &Identifier) -> Option<&Table> {
         self.tables.iter().find(|t| &t.name == name)
+    }
+}
+
+impl DatabaseStorage for TempDb {
+    type Info = TempDb;
+
+    fn scan_table<'a>(&'a self, table: &'a Table)
+    -> Box<Iterator<Item=Box<[Variant]>> + 'a>
+    {
+        let columns: &'a [self::table::Column] = &table.columns;
+
+        Box::new(table.rowid_index.iter().map(move |key_v| {
+            use byteutils;
+            use std::borrow::IntoCow;
+
+            let raw_key: &[u8] = &key_v;
+            trace!("KEY: {:?}", raw_key);
+
+            let variable_column_count = columns.iter().filter(|column| {
+                column.dbtype.is_variable_length()
+            }).count();
+
+            let variable_lengths: Vec<_> = (0..variable_column_count).map(|i| {
+                let o = raw_key.len() - (variable_column_count + i) * 8;
+                byteutils::read_udbinteger(&raw_key[o..o+8])
+            }).collect();
+
+            trace!("variable lengths: {:?}", variable_lengths);
+
+            let _rowid: u64 = byteutils::read_udbinteger(&raw_key[0..8]);
+
+            let mut variable_length_offset = 0;
+            let mut key_offset = 8;
+
+            let v: Vec<_> = table.columns.iter().map(|column| {
+                let size = match column.dbtype.get_fixed_length() {
+                    Some(l) => l as usize,
+                    None => {
+                        let l = variable_lengths[variable_length_offset];
+                        variable_length_offset += 1;
+                        l as usize
+                    }
+                };
+
+                let bytes = &raw_key[key_offset..key_offset + size];
+
+                trace!("from bytes: {:?}, {:?}", column.dbtype, bytes);
+                let value = ColumnValueOps::from_bytes(column.dbtype, bytes.into_cow()).unwrap();
+                key_offset += size;
+                value
+            }).collect();
+
+            v.into_boxed_slice()
+        }))
     }
 }
 
@@ -163,11 +219,18 @@ impl TempDb {
     }
 
     fn select(&self, stmt: ast::SelectStatement) -> ExecuteStatementResult {
-        use queryplan::QueryPlan;
+        use queryplan::{ExecuteQueryPlan, QueryPlan};
 
         let plan = try!(QueryPlan::compile_select(self, stmt).map_err(|e| format!("{}", e)));
-
         debug!("{}", plan);
+
+        let execute = ExecuteQueryPlan::new(self);
+        let result = execute.execute_query_plan(&plan.expr, &mut |rows| {
+            debug!("ROW: {:?}", rows);
+            Ok(())
+        });
+        
+        trace!("{:?}", result);
 
         unimplemented!()
     }
@@ -203,7 +266,6 @@ impl TempDb {
 
 fn ast_expression_to_data(expr: &ast::Expression, column_type: DbType, buf: &mut Vec<u8>) {
     use sqlsyntax::ast::Expression::*;
-    use columnvalueops::ColumnValueOps;
     use std::borrow::IntoCow;
 
     let value: Variant = match expr {

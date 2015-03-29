@@ -1,7 +1,7 @@
 use columnvalueops::ColumnValueOps;
 use databaseinfo::DatabaseInfo;
 use databasestorage::DatabaseStorage;
-use super::sexpression::SExpression;
+use super::sexpression::{BinaryOp, SExpression};
 
 struct Source<'a, ColumnValue: Sized + 'static> {
     parent: Option<&'a Source<'a, ColumnValue>>,
@@ -41,17 +41,17 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
         }
     }
 
-    pub fn execute_query_plan<'b, R>(&self, expr: &SExpression<'a, Storage::Info>, result_cb: R)
+    pub fn execute_query_plan<'b, 'c>(&self, expr: &SExpression<'a, Storage::Info>,
+    result_cb: &'c mut FnMut(&[<Storage::Info as DatabaseInfo>::ColumnValue]) -> Result<(), ()>)
     -> Result<(), ()>
-    where R: Fn(&[<Storage::Info as DatabaseInfo>::ColumnValue]) -> Result<(), ()>
     {
-        self.execute(expr, &result_cb, None)
+        self.execute(expr, result_cb, None)
     }
 
-    fn execute<'b, 'c, R>(&self, expr: &SExpression<'a, Storage::Info>, result_cb: &'c R,
+    fn execute<'b, 'c>(&self, expr: &SExpression<'a, Storage::Info>,
+        result_cb: &'c mut FnMut(&[<Storage::Info as DatabaseInfo>::ColumnValue]) -> Result<(), ()>,
         source: Option<&Source<'b, <Storage::Info as DatabaseInfo>::ColumnValue>>)
     -> Result<(), ()>
-    where R: Fn(&[<Storage::Info as DatabaseInfo>::ColumnValue]) -> Result<(), ()>
     {
         match expr {
             &SExpression::Scan { table, source_id, ref yield_fn } => {
@@ -68,7 +68,7 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
                 Ok(())
             },
             &SExpression::Map { source_id, ref yield_in_fn, ref yield_out_fn } => {
-                self.execute(yield_in_fn, &|row| {
+                self.execute(yield_in_fn, &mut |row| {
                     let new_source = Source {
                         parent: source,
                         source_id: source_id,
@@ -122,10 +122,43 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
                 let r = try!(self.resolve_value(rhs, source));
 
                 Ok(match op {
-                    // Equal => l.equal(&r),
-                    // NotEqual => l.not_equal(&r),
+                    BinaryOp::Equal => l.equals(&r),
+                    BinaryOp::NotEqual => l.not_equals(&r),
+                    BinaryOp::And => l.and(&r),
+                    BinaryOp::Or => l.or(&r),
+                    BinaryOp::Concatenate => l.concat(&r),
                     _ => unimplemented!()
                 })
+            },
+            &SExpression::Map { source_id, ref yield_in_fn, ref yield_out_fn } => {
+                trace!("resolve_value; map {}", source_id);
+
+                // yield_in_fn is expected to yield exactly one row
+                // yield_out_fn is expected to return a single resolved value
+                let mut r = None;
+                let mut row_count = 0;
+
+                try!(self.execute(yield_in_fn, &mut |row| {
+                    if row_count == 0 {
+                        r = Some(row.to_vec());
+                    }
+                    row_count += 1;
+                    Ok(())
+                }, source));
+
+                if row_count == 1 {
+                    let row = r.unwrap();
+
+                    let new_source = Source {
+                        parent: source,
+                        source_id: source_id,
+                        row: &row
+                    };
+
+                    self.resolve_value(yield_out_fn, Some(&new_source))
+                } else {
+                    Err(())
+                }
             },
             _ => Err(())
         }
