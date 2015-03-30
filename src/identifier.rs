@@ -1,5 +1,5 @@
 use std::fmt;
-use std::borrow::Borrow;
+use std::ops::Deref;
 
 /// An identifier is the name for a database object.
 /// Table names, column names, constraint names are identifiers.
@@ -26,10 +26,9 @@ pub struct Identifier {
 }
 
 impl Identifier {
-    pub fn new<B>(value: B) -> Option<Identifier>
-    where B: Borrow<str>
+    pub fn new(value: &str) -> Option<Identifier>
     {
-        match normalize(value.borrow()) {
+        match normalize(value) {
             Some(s) => Some(Identifier {
                 value: s
             }),
@@ -41,7 +40,7 @@ impl Identifier {
     /// This should only be called if you're _really_ sure the string is
     /// normalized.
     pub unsafe fn from_string(value: String) -> Identifier {
-        debug_assert_eq!(normalize(value.as_slice()), Some(value.clone()));
+        debug_assert_eq!(normalize(&value), Some(value.clone()));
 
         Identifier {
             value: value
@@ -51,13 +50,15 @@ impl Identifier {
     pub fn into_inner(self) -> String { self.value }
 }
 
-impl Str for Identifier {
-    fn as_slice(&self) -> &str { self.value.as_slice() }
+impl Deref for Identifier {
+    type Target = str;
+
+    fn deref(&self) -> &str { &self.value }
 }
 
 impl fmt::Display for Identifier {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        f.write_str(self.value.as_slice())
+        f.write_str(&self.value)
     }
 }
 

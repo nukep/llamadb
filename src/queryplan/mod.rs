@@ -99,7 +99,7 @@ where <DB as DatabaseInfo>::Table: 'a
             let s = format!("_{}", arbitrary_column_count);
             arbitrary_column_count += 1;
 
-            Identifier::new(s).unwrap()
+            Identifier::new(&s).unwrap()
         };
 
         // let mut sources = SourceCollection::new();
@@ -357,7 +357,7 @@ where <DB as DatabaseInfo>::Table: 'a
         let cn: Vec<_> = self.out_column_names.iter().map(|n| format!("`{}`", n)).collect();
 
         try!(writeln!(f, "query plan"));
-        try!(writeln!(f, "column names: ({})", cn.as_slice().connect(", ")));
+        try!(writeln!(f, "column names: ({})", cn.connect(", ")));
         self.expr.fmt(f)
     }
 }

@@ -26,7 +26,5 @@ impl ColumnNames {
 impl Deref for ColumnNames {
     type Target = [Identifier];
 
-    fn deref(&self) -> &[Identifier] {
-        self.column_names.as_slice()
-    }
+    fn deref(&self) -> &[Identifier] { &self.column_names }
 }

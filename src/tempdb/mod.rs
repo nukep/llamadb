@@ -119,11 +119,11 @@ impl TempDb {
             unimplemented!()
         }
 
-        let table_name = Identifier::new(stmt.table.table_name).unwrap();
+        let table_name = Identifier::new(&stmt.table.table_name).unwrap();
 
         let columns = try!(stmt.columns.into_iter().enumerate().map(|(i, column)| {
-            let name = Identifier::new(column.column_name).unwrap();
-            let type_name = Identifier::new(column.type_name).unwrap();
+            let name = Identifier::new(&column.column_name).unwrap();
+            let type_name = Identifier::new(&column.type_name).unwrap();
             let type_array_size = match column.type_array_size {
                 Some(Some(s)) => {
                     let v = try!(self.parse_number_as_u64(s));
@@ -165,8 +165,8 @@ impl TempDb {
 
         let ast_index_to_column_index: Vec<u32> = match stmt.into_columns {
             // Column names listed; map specified columns
-            Some(v) => try!(v.iter().map(|column_name| {
-                let ident = Identifier::new(column_name.as_slice()).unwrap();
+            Some(v) => try!(v.into_iter().map(|column_name| {
+                let ident = Identifier::new(&column_name).unwrap();
                 match table.find_column_by_name(&ident) {
                     Some(column) => Ok(column.get_offset()),
                     None => Err(format!("column {} not in table", column_name))
@@ -229,7 +229,7 @@ impl TempDb {
             debug!("ROW: {:?}", rows);
             Ok(())
         });
-        
+
         trace!("{:?}", result);
 
         unimplemented!()
@@ -251,7 +251,7 @@ impl TempDb {
             unimplemented!()
         }
 
-        let table_name = try!(Identifier::new(table.table_name.as_slice()).ok_or(format!("Bad table name: {}", table.table_name)));
+        let table_name = try!(Identifier::new(&table.table_name).ok_or(format!("Bad table name: {}", table.table_name)));
 
         match self.tables.iter_mut().find(|t| t.name == table_name) {
             Some(s) => Ok(s),
@@ -270,10 +270,12 @@ fn ast_expression_to_data(expr: &ast::Expression, column_type: DbType, buf: &mut
 
     let value: Variant = match expr {
         &StringLiteral(ref s) => {
-            ColumnValueOps::from_string_literal(s.as_slice().into_cow()).unwrap()
+            let r: &str = &s;
+            ColumnValueOps::from_string_literal(r.into_cow()).unwrap()
         },
         &Number(ref n) => {
-            ColumnValueOps::from_number_literal(n.as_slice().into_cow()).unwrap()
+            let r: &str = &n;
+            ColumnValueOps::from_number_literal(r.into_cow()).unwrap()
         },
         _ => unimplemented!()
     };

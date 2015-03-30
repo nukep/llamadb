@@ -75,7 +75,7 @@ fn word_to_token(word: String) -> Token {
     // Make all letters lowercase for comparison
     let word_cmp: String = word.chars().flat_map( |c| c.to_lowercase() ).collect();
 
-    match word_cmp.as_slice() {
+    match word_cmp.as_ref() {
         "select" => Select,
         "from" => From,
         "where" => Where,

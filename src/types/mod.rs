@@ -27,7 +27,7 @@ pub enum DbType {
 
 impl DbType {
     pub fn from_identifier(ident: &Identifier, array_size: Option<Option<u64>>) -> Option<DbType> {
-        match (ident.as_slice(), array_size) {
+        match (&ident as &str, array_size) {
             ("byte", None) => Some(DbType::Integer { signed: false, bytes: 1 }),
             ("byte", Some(None)) => Some(DbType::ByteDynamic),
             ("byte", Some(Some(v))) => Some(DbType::ByteFixed(v)),

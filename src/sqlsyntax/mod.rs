@@ -7,12 +7,12 @@ mod parser;
 
 pub fn parse_statement(query: &str) -> ast::Statement {
     let tokens = lexer::parse(query);
-    parser::parse_statement(tokens.as_slice()).unwrap()
+    parser::parse_statement(&tokens).unwrap()
 }
 
 pub fn parse_statements(query: &str) -> Vec<ast::Statement> {
     let tokens = lexer::parse(query);
-    parser::parse_statements(tokens.as_slice()).unwrap()
+    parser::parse_statements(&tokens).unwrap()
 }
 
 #[cfg(test)]

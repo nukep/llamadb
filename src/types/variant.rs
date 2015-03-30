@@ -59,14 +59,14 @@ impl ColumnValueOps for Variant {
             DbType::Null => Ok(Variant::Null),
             DbType::ByteDynamic => Ok(Variant::Bytes(bytes.into_owned())),
             DbType::ByteFixed(n) => {
-                if bytes.as_slice().len() as u64 != n {
+                if bytes.len() as u64 != n {
                     Err(())
                 } else {
                     Ok(Variant::Bytes(bytes.into_owned()))
                 }
             },
             DbType::Integer { signed, bytes: n } => {
-                if bytes.as_slice().len() != n as usize {
+                if bytes.len() != n as usize {
                     Err(())
                 } else {
                     if signed {
