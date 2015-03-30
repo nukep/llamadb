@@ -169,8 +169,14 @@ pub enum CreateStatement {
 }
 
 #[derive(Debug)]
+pub enum ExplainStatement {
+    Select(SelectStatement)
+}
+
+#[derive(Debug)]
 pub enum Statement {
     Select(SelectStatement),
     Insert(InsertStatement),
-    Create(CreateStatement)
+    Create(CreateStatement),
+    Explain(ExplainStatement)
 }

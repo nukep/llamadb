@@ -26,7 +26,8 @@ pub enum ExecuteStatementResponse<'a> {
     Select {
         column_names: Box<[String]>,
         rows: Box<Iterator<Item=Box<[Variant]>> + 'a>
-    }
+    },
+    Explain(String)
 }
 
 pub type ExecuteStatementResult<'a> = Result<ExecuteStatementResponse<'a>, String>;
@@ -109,7 +110,8 @@ impl TempDb {
                 }
             },
             ast::Statement::Insert(insert_stmt) => self.insert_into(insert_stmt),
-            ast::Statement::Select(select_stmt) => self.select(select_stmt)
+            ast::Statement::Select(select_stmt) => self.select(select_stmt),
+            ast::Statement::Explain(explain_stmt) => self.explain(explain_stmt)
         }
     }
 
@@ -242,6 +244,18 @@ impl TempDb {
             column_names: column_names.into_boxed_slice(),
             rows: Box::new(rows.into_iter())
         })
+    }
+
+    fn explain(&self, stmt: ast::ExplainStatement) -> ExecuteStatementResult {
+        use queryplan::QueryPlan;
+
+        match stmt {
+            ast::ExplainStatement::Select(select) => {
+                let plan = try!(QueryPlan::compile_select(self, select).map_err(|e| format!("{}", e)));
+
+                Ok(ExecuteStatementResponse::Explain(plan.to_string()))
+            }
+        }
     }
 
     fn add_table(&mut self, table: Table) -> Result<(), String> {

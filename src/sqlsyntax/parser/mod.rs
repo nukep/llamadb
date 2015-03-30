@@ -651,6 +651,19 @@ impl Rule for CreateStatement {
     }
 }
 
+impl Rule for ExplainStatement {
+    type Output = ExplainStatement;
+    fn parse(tokens: &mut Tokens) -> RuleResult<ExplainStatement> {
+        try!(tokens.pop_token_expecting(&Token::Explain, "EXPLAIN"));
+
+        if let Some(stmt) = try_notfirst!(SelectStatement::parse_lookahead(tokens)) {
+            Ok(ExplainStatement::Select(stmt))
+        } else {
+            Err(tokens.expecting("SELECT statement"))
+        }
+    }
+}
+
 impl Rule for Statement {
     type Output = Statement;
     fn parse(tokens: &mut Tokens) -> RuleResult<Statement> {
@@ -660,8 +673,10 @@ impl Rule for Statement {
             Ok(Statement::Insert(insert))
         } else if let Some(create) = try!(CreateStatement::parse_lookahead(tokens)) {
             Ok(Statement::Create(create))
+        } else if let Some(explain) = try!(ExplainStatement::parse_lookahead(tokens)) {
+            Ok(Statement::Explain(explain))
         } else {
-            Err(tokens.expecting("SELECT, INSERT, or CREATE statement"))
+            Err(tokens.expecting("SELECT, INSERT, CREATE, or EXPLAIN statement"))
         }
     }
 }

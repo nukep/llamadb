@@ -83,8 +83,11 @@ fn execute(out: &mut Write, db: &mut llamadb::tempdb::TempDb, tokens: &[llamadb:
         ExecuteStatementResponse::Select { column_names, rows } => {
             pretty_select(out, &column_names, rows, 32)
         },
+        ExecuteStatementResponse::Explain(plan) => {
+            writeln!(out, "{}", plan)
+        },
     };
-    
+
     write_result.unwrap();
 
     Ok(())
