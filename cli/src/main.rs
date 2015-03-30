@@ -14,8 +14,6 @@ use prettyselect::pretty_select;
 fn main() {
     let mut lexer = llamadb::sqlsyntax::lexer::Lexer::new();
 
-    let mut line = String::new();
-
     let mut db = llamadb::tempdb::TempDb::new();
 
     let mut out = std::io::stdout();
@@ -32,11 +30,22 @@ fn main() {
         match val {
             None => break,
             Some(input) => {
+                if input == "testdata" {
+                    let mut sink = std::io::sink();
+
+                    match load_testdata(&mut sink, &mut db) {
+                        Ok(()) => println!("Test data loaded."),
+                        Err(message) => println!("{}", message)
+                    };
+                    continue;
+                }
+
                 lexer.feed_characters(input.chars());
                 lexer.feed_character(Some('\n'));
 
-                line.extend(input.chars());
-                line.push('\n');
+                if !input.is_empty() && !lexer.tokens.is_empty() {
+                    linenoise::history_add(&input);
+                }
 
                 while let Some(i) = lexer.tokens.iter().position(|token| token == &llamadb::sqlsyntax::lexer::Token::Semicolon) {
                     match execute(&mut out, &mut db, &lexer.tokens[0..i+1]) {
@@ -46,12 +55,6 @@ fn main() {
 
                     let right = lexer.tokens.split_off(i+1);
                     lexer.tokens = right;
-
-                    if !line.is_empty() {
-                        line.pop();
-                        linenoise::history_add(&line);
-                        line.clear();
-                    }
                 }
             }
         }
@@ -61,12 +64,18 @@ fn main() {
 fn execute(out: &mut Write, db: &mut llamadb::tempdb::TempDb, tokens: &[llamadb::sqlsyntax::lexer::Token])
 -> Result<(), String>
 {
-    use llamadb::tempdb::ExecuteStatementResponse;
-
     let statement = match llamadb::sqlsyntax::parser::parse_statement(tokens) {
         Ok(stmt) => stmt,
         Err(e) => return Err(format!("syntax error: {}", e))
     };
+
+    execute_statement(out, db, statement)
+}
+
+fn execute_statement(out: &mut Write, db: &mut llamadb::tempdb::TempDb, statement: llamadb::sqlsyntax::ast::Statement)
+-> Result<(), String>
+{
+    use llamadb::tempdb::ExecuteStatementResponse;
 
     let result = match db.execute_statement(statement) {
         Ok(r) => r,
@@ -89,6 +98,18 @@ fn execute(out: &mut Write, db: &mut llamadb::tempdb::TempDb, tokens: &[llamadb:
     };
 
     write_result.unwrap();
+
+    Ok(())
+}
+
+fn load_testdata(out: &mut Write, db: &mut llamadb::tempdb::TempDb) -> Result<(), String> {
+    let test_data = include_str!("testdata.sql");
+
+    let statements = llamadb::sqlsyntax::parse_statements(test_data);
+
+    for statement in statements {
+        try!(execute_statement(out, db, statement));
+    }
 
     Ok(())
 }
