@@ -22,7 +22,7 @@ pub struct TempDb {
 
 pub enum ExecuteStatementResponse<'a> {
     Created,
-    Inserted,
+    Inserted(u64),
     Select(ResultSet<'a>)
 }
 
@@ -186,6 +186,8 @@ impl TempDb {
 
         match stmt.source {
             ast::InsertSource::Values(rows) => {
+                let mut count = 0;
+
                 for row in rows {
                     if ast_index_to_column_index.len() != row.len() {
                         return Err(format!("INSERT value contains wrong amount of columns"));
@@ -210,9 +212,10 @@ impl TempDb {
                     });
 
                     try!(table.insert_row(iter).map_err(|e| e.to_string()));
+                    count += 1;
                 }
 
-                Ok(ExecuteStatementResponse::Inserted)
+                Ok(ExecuteStatementResponse::Inserted(count))
             },
             ast::InsertSource::Select(s) => unimplemented!()
         }

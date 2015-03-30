@@ -131,13 +131,29 @@ enum LexerState {
     BlockComment { was_prev_char_asterisk: bool }
 }
 
-struct Lexer {
+pub struct Lexer {
+    pub tokens: Vec<Token>,
+
     state: LexerState,
-    string_buffer: String,
-    tokens: Vec<Token>
+    string_buffer: String
 }
 
 impl Lexer {
+    pub fn new() -> Lexer {
+        Lexer {
+            tokens: Vec::new(),
+            state: LexerState::NoState,
+            string_buffer: String::new()
+        }
+    }
+
+    pub fn is_no_state(&self) -> bool {
+        match self.state {
+            LexerState::NoState => true,
+            _ => false
+        }
+    }
+
     fn no_state(&mut self, c: char) -> Result<LexerState, char> {
         match c {
             'a'...'z' | 'A'...'Z' | '_' => {
@@ -328,20 +344,22 @@ impl Lexer {
             }
         };
     }
+
+    pub fn feed_characters<I>(&mut self, iter: I)
+    where I: Iterator<Item=char>
+    {
+        for c in iter {
+            self.feed_character(Some(c));
+        }
+    }
 }
 
 pub fn parse(sql: &str) -> Vec<Token> {
-    let mut lexer = Lexer {
-        state: LexerState::NoState,
-        string_buffer: String::new(),
-        tokens: Vec::new()
-    };
+    let mut lexer = Lexer::new();
 
-    for c in sql.chars() {
-        lexer.feed_character(Some(c));
-    }
-
+    lexer.feed_characters(sql.chars());
     lexer.feed_character(None);
+
     lexer.tokens
 }
 

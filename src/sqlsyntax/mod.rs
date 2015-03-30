@@ -2,8 +2,8 @@
 /// As a consequence, the lexer and parser are both written by hand.
 
 pub mod ast;
-mod lexer;
-mod parser;
+pub mod lexer;
+pub mod parser;
 
 pub fn parse_statement(query: &str) -> ast::Statement {
     let tokens = lexer::parse(query);
