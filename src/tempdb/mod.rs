@@ -23,11 +23,10 @@ pub struct TempDb {
 pub enum ExecuteStatementResponse<'a> {
     Created,
     Inserted(u64),
-    Select(ResultSet<'a>)
-}
-
-pub struct ResultSet<'a> {
-    db: &'a mut TempDb
+    Select {
+        column_names: Box<[String]>,
+        rows: Box<Iterator<Item=Box<[Variant]>> + 'a>
+    }
 }
 
 pub type ExecuteStatementResult<'a> = Result<ExecuteStatementResponse<'a>, String>;
@@ -227,15 +226,22 @@ impl TempDb {
         let plan = try!(QueryPlan::compile_select(self, stmt).map_err(|e| format!("{}", e)));
         debug!("{}", plan);
 
+        let mut rows = Vec::new();
+
         let execute = ExecuteQueryPlan::new(self);
-        let result = execute.execute_query_plan(&plan.expr, &mut |rows| {
-            debug!("ROW: {:?}", rows);
+        let result = execute.execute_query_plan(&plan.expr, &mut |r| {
+            rows.push(r.to_vec().into_boxed_slice());
             Ok(())
         });
 
         trace!("{:?}", result);
 
-        unimplemented!()
+        let column_names: Vec<String> = plan.out_column_names.iter().map(|ident| ident.to_string()).collect();
+
+        Ok(ExecuteStatementResponse::Select {
+            column_names: column_names.into_boxed_slice(),
+            rows: Box::new(rows.into_iter())
+        })
     }
 
     fn add_table(&mut self, table: Table) -> Result<(), String> {

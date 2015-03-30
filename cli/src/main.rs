@@ -1,9 +1,15 @@
 #![feature(collections)]
 
+#[macro_use]
+extern crate log;
+
 extern crate linenoise;
 extern crate llamadb;
 
 use std::io::Write;
+
+mod prettyselect;
+use prettyselect::pretty_select;
 
 fn main() {
     let mut lexer = llamadb::sqlsyntax::lexer::Lexer::new();
@@ -67,13 +73,19 @@ fn execute(out: &mut Write, db: &mut llamadb::tempdb::TempDb, tokens: &[llamadb:
         Err(e) => return Err(format!("execution error: {}", e))
     };
 
-    match result {
-        ExecuteStatementResponse::Created => writeln!(out, "Created."),
-        ExecuteStatementResponse::Inserted(rows) => writeln!(out, "Inserted {} rows.", rows),
-        ExecuteStatementResponse::Select(iter) => {
-            writeln!(out, "yes. there might be rows here.")
+    let write_result = match result {
+        ExecuteStatementResponse::Created => {
+            writeln!(out, "Created.")
+        },
+        ExecuteStatementResponse::Inserted(rows) => {
+            writeln!(out, "{} rows inserted.", rows)
+        },
+        ExecuteStatementResponse::Select { column_names, rows } => {
+            pretty_select(out, &column_names, rows, 32)
         },
     };
+    
+    write_result.unwrap();
 
     Ok(())
 }
