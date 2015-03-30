@@ -1,40 +1,94 @@
 # LlamaDB
 
 **Warning**: This project is in the design/implementation phase, and is not
-functional. Do NOT use this for anything you depend on!
+stable.
+Do NOT use this for launching rockets or for anything that's important to you!
 
 LlamaDB is a versatile, speedy and low-footprint SQL database, written entirely
 in the Rust programming language.
 
 # Another SQL database? Why?
 
-The project is driven by two personal goals:
+The project is driven by two goals:
 
-1. Understand SQL better: both the language and the implementation details
-2. Write a mission-critical project with Rust
+1. The author wants to understand SQL better: both the language and the implementation details.
+2. Show what Rust can do for SQL, much like what Servo is doing for web browsers.
 
-# Example
+# Example CLI usage
 
-Note: DOESN'T WORK YET. Intended design.
-
-```rust
-let mut db = llamadb::MemoryDatabase::new();
-
-sql!(db,
-    "CREATE TABLE account (
-        id          UUID PRIMARY KEY,
-        username    VARCHAR,
-        password    BCRYPT
-    )"
-).unwrap();
-
-let row = sql!(db,
-    "INSERT INTO account(username, password) VALUES(?, ?)",
-    "John", bcrypt("secretpassword")
-).unwrap();
-
-println!("{}", row["id"].getString());
 ```
+llamadb> CREATE TABLE person (
+    ...>   name VARCHAR,
+    ...>   age U32
+    ...> );
+Created.
+llamadb> INSERT INTO person VALUES ('Bob', 24), ('Fred', 45);
+2 rows inserted.
+llamadb> SELECT * FROM person;
+--------------
+| name | age |
+--------------
+| Bob  | 24  |
+| Fred | 45  |
+--------------
+
+2 rows selected.
+llamadb> SELECT name || ' is ' || age || ' years old.' AS message FROM person;
+-------------------------
+| message               |
+-------------------------
+| Bob is 24 years old.  |
+| Fred is 45 years old. |
+-------------------------
+llamadb> EXPLAIN SELECT * FROM person WHERE age >= 18;
+query plan
+column names: (`name`, `age`)
+(scan `person` :source_id 0
+  (if
+    (>=
+      (column-field :source_id 0 :column_offset 1)
+      18)
+    (yield
+      (column-field :source_id 0 :column_offset 0)
+      (column-field :source_id 0 :column_offset 1))))
+llamadb>
+```
+
+## Features and TODO
+
+* [x] Command-line interface.
+* [ ] Stable C API.
+* [x] `CREATE TABLE`, `SELECT`.
+* [x] `EXPLAIN` - show the query plan for a `SELECT` statement.
+* [x] `INSERT`.
+* [ ] `UPDATE`, `DELETE`.
+* [ ] Table indices, `CREATE INDEX`.
+* [x] Nested and correlated subqueries.
+* [ ] `GROUP BY`, `HAVING`, `ORDER BY`.
+* [ ] `LIMIT`.
+* [ ] `INSERT` using a `SELECT` query.
+* [x] Implicit cross joining, eg. `...FROM table1, table2...`.
+* [ ] Inner and outer joins (use WHERE for inner joins for now).
+* [ ] Column constraints.
+* [ ] Auto-incrementing column.
+* [ ] Persistent disk database (B+Tree and pager need more work!).
+* [ ] Transactions, locking, ACID.
+
+## Data types
+
+* **`STRING` / `VARCHAR`**
+ * A variable-length UTF-8 string.
+* **`Ux`**, where x is >= 8 and <= 64, and is a multiple 8.
+ * An unsigned integer.
+* **`Sx`**, where x is >= 8 and <= 64, and is a multiple 8.
+ * An signed integer.
+* **`F64` / `DOUBLE`**
+ * A double-precision (64-bit) floating point number.
+* **`byte[]`**
+ * A variable-length byte array.
+* **`byte[N]`**
+ * A fixed-length byte array.
+
 
 ## Principles
 
@@ -47,11 +101,6 @@ println!("{}", row["id"].getString());
  * The user may expect all database files to be on an encrypted drive.
    Sensitive data shouldn't leak to unexpected places.
 
-
-## API design
-
-When using the Rust or C API, all columns are sent and received as _byte arrays_.
-It is up to the client-side driver to convert these types to numbers or strings if applicable.
 
 ## Security principles
 
