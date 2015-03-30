@@ -1,3 +1,4 @@
+use byteutils;
 use types::DbType;
 use databaseinfo::{ColumnInfo, TableInfo};
 use identifier::Identifier;
@@ -65,7 +66,11 @@ impl Table {
         assert_eq!(self.columns.len(), column_data.len());
 
         let mut key: Vec<u8> = Vec::new();
-        key.write_be_u64(self.next_rowid).unwrap();
+        {
+            let mut buf = [0; 8];
+            byteutils::write_udbinteger(self.next_rowid, &mut buf);
+            key.push_all(&buf);
+        }
 
         let mut lengths = Vec::new();
 
@@ -80,7 +85,9 @@ impl Table {
 
             if column.dbtype.is_valid_length(len) {
                 if column.dbtype.is_variable_length() {
-                    lengths.write_be_u64(len).unwrap();
+                    let mut buf = [0; 8];
+                    byteutils::write_udbinteger(len, &mut buf);
+                    lengths.push_all(&buf);
                 }
 
                 key.push_all(data);

@@ -50,7 +50,7 @@ impl DbType {
                         _ => return None
                     };
 
-                    match ident.char_at(0) {
+                    match ident.chars().nth(0).unwrap() {
                         'u' => Some(DbType::Integer { signed: false, bytes: bytes }),
                         'i' => Some(DbType::Integer { signed: true, bytes: bytes }),
                         _ => None

@@ -71,8 +71,7 @@ fn normalize(value: &str) -> Option<String> {
     use std::ascii::AsciiExt;
 
     fn is_valid(value: &str) -> bool {
-        if value.len() > 0 {
-            let c = value.char_at(0);
+        if let Some(c) = value.chars().nth(0) {
             // Test if the first character is not a digit or space
             match c {
                 '0'...'9' | ' ' => false,
