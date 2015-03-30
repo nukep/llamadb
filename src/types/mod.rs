@@ -78,7 +78,12 @@ impl DbType {
             // Byte array with all values set to zero
             &DbType::ByteFixed(bytes) => Owned(repeat(0).take(bytes as usize).collect()),
             // Zero
-            &DbType::Integer { bytes, .. } => Owned(repeat(0).take(bytes as usize).collect()),
+            &DbType::Integer { signed: false, bytes, .. } => Owned(repeat(0).take(bytes as usize).collect()),
+            &DbType::Integer { signed: true, bytes, .. } => {
+                let mut v = vec![0x80];
+                v.extend(repeat(0).take((bytes-1) as usize));
+                Owned(v)
+            },
             // Positive zero
             &DbType::F64 => Borrowed(F64_ZERO),
             // Empty string

@@ -1,7 +1,7 @@
 use byteutils;
 use columnvalueops::ColumnValueOps;
 use types::DbType;
-use std::borrow::Cow;
+use std::borrow::{Cow, IntoCow};
 use std::fmt;
 
 #[derive(Clone)]
@@ -18,8 +18,8 @@ impl fmt::Display for Variant {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
             &Variant::Null => write!(f, "NULL"),
-            &Variant::Bytes(ref v) => write!(f, "\"{:?}\"", v),
-            &Variant::StringLiteral(ref s) => write!(f, "\"{}\"", s),
+            &Variant::Bytes(ref v) => write!(f, "{:?}", v),
+            &Variant::StringLiteral(ref s) => write!(f, "{}", s),
             &Variant::SignedInteger(n) => write!(f, "{}", n),
             &Variant::UnsignedInteger(n) => write!(f, "{}", n),
             &Variant::Float(n) => write!(f, "{}", n),
@@ -92,7 +92,12 @@ impl ColumnValueOps for Variant {
     }
 
     fn to_bytes(self, dbtype: DbType) -> Result<Box<[u8]>, ()> {
-        match (self.cast(dbtype), dbtype) {
+        let s = match self.cast(dbtype) {
+            Some(s) => s,
+            None => return Err(())
+        };
+
+        match (s, dbtype) {
             (Variant::Null, DbType::Null) => {
                 // NULL has no data.
                 Err(())
@@ -146,9 +151,38 @@ impl ColumnValueOps for Variant {
         }
     }
 
-    fn cast(self, dbtype: DbType) -> Self {
-        // TODO
-        self
+    fn cast(self, dbtype: DbType) -> Option<Self> {
+        match (self, dbtype) {
+            (e@Variant::Null, DbType::Null)
+            | (e@Variant::Bytes(_), DbType::ByteDynamic)
+            | (e@Variant::StringLiteral(_), DbType::String)
+            | (e@Variant::SignedInteger(_), DbType::Integer { signed: true, .. })
+            | (e@Variant::UnsignedInteger(_), DbType::Integer { signed: false, .. })
+            | (e@Variant::Float(_), DbType::F64) => {
+                Some(e)
+            },
+            (e, DbType::String) => {
+                // every variant can be converted to a string
+                Some(Variant::StringLiteral(e.to_string()))
+            },
+            (e, DbType::ByteDynamic) => {
+                // every variant can be converted to their byte representation
+                let dbtype = e.get_dbtype();
+                match e.to_bytes(dbtype) {
+                    Ok(bytes) => Some(Variant::Bytes(bytes.into_vec())),
+                    Err(()) => None
+                }
+            },
+            (Variant::Bytes(bytes), v) => {
+                // every variant can be converted from their byte representation
+                let r: &[u8] = &bytes;
+                match ColumnValueOps::from_bytes(v, r.into_cow()) {
+                    Ok(s) => Some(s),
+                    Err(()) => None
+                }
+            },
+            _ => None
+        }
     }
 
     fn equals(&self, rhs: &Self) -> Self {
@@ -195,6 +229,12 @@ impl ColumnValueOps for Variant {
         match (self, rhs) {
             (&Variant::StringLiteral(ref l), &Variant::StringLiteral(ref r)) => {
                 Variant::StringLiteral(format!("{}{}", l, r))
+            },
+            (e @ &Variant::StringLiteral(_), rhs) => {
+                match rhs.clone().cast(DbType::String) {
+                    Some(r) => e.concat(&r),
+                    None => e.clone()
+                }
             },
             (e, _) => e.clone()
         }

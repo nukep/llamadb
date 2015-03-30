@@ -12,7 +12,7 @@ pub trait ColumnValueOps: Sized {
     /// Used for predicate logic (such as the entire WHERE expression).
     fn tests_true(&self) -> bool;
 
-    fn cast(self, dbtype: DbType) -> Self;
+    fn cast(self, dbtype: DbType) -> Option<Self>;
     fn equals(&self, rhs: &Self) -> Self;
     fn not_equals(&self, rhs: &Self) -> Self;
     fn and(&self, rhs: &Self) -> Self;
