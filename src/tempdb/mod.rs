@@ -61,7 +61,7 @@ impl DatabaseStorage for TempDb {
             }).count();
 
             let variable_lengths: Vec<_> = (0..variable_column_count).map(|i| {
-                let o = raw_key.len() - (variable_column_count + i) * 8;
+                let o = raw_key.len() - variable_column_count*8 + i*8;
                 byteutils::read_udbinteger(&raw_key[o..o+8])
             }).collect();
 
