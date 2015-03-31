@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 
 use columnvalueops::ColumnValueOps;
 use databaseinfo::{DatabaseInfo, TableInfo, ColumnInfo};
-use databasestorage::DatabaseStorage;
+use databasestorage::{Group, DatabaseStorage};
 use identifier::Identifier;
 use types::{DbType, Variant};
 use sqlsyntax::ast;
@@ -41,12 +41,15 @@ impl DatabaseInfo for TempDb {
     }
 }
 
-impl DatabaseStorage for TempDb {
-    type Info = TempDb;
+struct ScanGroup<'a> {
+    table: &'a Table
+}
 
-    fn scan_table<'a>(&'a self, table: &'a Table)
-    -> Box<Iterator<Item=Box<[Variant]>> + 'a>
-    {
+impl<'a> Group for ScanGroup<'a> {
+    type ColumnValue = Variant;
+
+    fn iter<'b>(&'b self) -> Box<Iterator<Item=Box<[Variant]>> + 'b> {
+        let table = self.table;
         let columns: &'a [self::table::Column] = &table.columns;
 
         Box::new(table.rowid_index.iter().map(move |key_v| {
@@ -92,6 +95,18 @@ impl DatabaseStorage for TempDb {
 
             v.into_boxed_slice()
         }))
+    }
+}
+
+impl DatabaseStorage for TempDb {
+    type Info = TempDb;
+
+    fn scan_table<'a>(&'a self, table: &'a Table)
+    -> Box<Group<ColumnValue=Variant> + 'a>
+    {
+        Box::new(ScanGroup {
+            table: table
+        })
     }
 }
 

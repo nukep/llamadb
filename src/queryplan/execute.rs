@@ -1,20 +1,41 @@
 use columnvalueops::ColumnValueOps;
 use databaseinfo::DatabaseInfo;
-use databasestorage::DatabaseStorage;
+use databasestorage::{DatabaseStorage, Group};
 use super::sexpression::{BinaryOp, SExpression};
+
+enum SourceType<'a, ColumnValue: Sized + 'static> {
+    Row(&'a [ColumnValue]),
+    Group(&'a Group<ColumnValue=ColumnValue>)
+}
 
 struct Source<'a, ColumnValue: Sized + 'static> {
     parent: Option<&'a Source<'a, ColumnValue>>,
     source_id: u32,
-    row: &'a [ColumnValue],
+    source_type: SourceType<'a, ColumnValue>
 }
 
 impl<'a, ColumnValue: Sized> Source<'a, ColumnValue> {
     fn find_row_from_source_id(&self, source_id: u32) -> Option<&[ColumnValue]> {
         if self.source_id == source_id {
-            Some(self.row)
+            match &self.source_type {
+                &SourceType::Row(row) => Some(row),
+                _ => None
+            }
         } else if let Some(parent) = self.parent {
             parent.find_row_from_source_id(source_id)
+        } else {
+            None
+        }
+    }
+
+    fn find_group_from_source_id(&self, source_id: u32) -> Option<&Group<ColumnValue=ColumnValue>> {
+        if self.source_id == source_id {
+            match &self.source_type {
+                &SourceType::Group(group) => Some(group),
+                _ => None
+            }
+        } else if let Some(parent) = self.parent {
+            parent.find_group_from_source_id(source_id)
         } else {
             None
         }
@@ -55,11 +76,12 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
     {
         match expr {
             &SExpression::Scan { table, source_id, ref yield_fn } => {
-                for row in self.storage.scan_table(table) {
+                let group = self.storage.scan_table(table);
+                for row in group.iter() {
                     let new_source = Source {
                         parent: source,
                         source_id: source_id,
-                        row: &row
+                        source_type: SourceType::Row(&row)
                     };
 
                     try!(self.execute(yield_fn, result_cb, Some(&new_source)));
@@ -72,7 +94,7 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
                     let new_source = Source {
                         parent: source,
                         source_id: source_id,
-                        row: row
+                        source_type: SourceType::Row(row)
                     };
 
                     self.execute(yield_out_fn, result_cb, Some(&new_source))
@@ -152,7 +174,7 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
                     let new_source = Source {
                         parent: source,
                         source_id: source_id,
-                        row: &row
+                        source_type: SourceType::Row(&row)
                     };
 
                     self.resolve_value(yield_out_fn, Some(&new_source))
