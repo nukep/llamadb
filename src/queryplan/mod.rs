@@ -102,8 +102,6 @@ where <DB as DatabaseInfo>::Table: 'a
             Identifier::new(&s).unwrap()
         };
 
-        // let mut sources = SourceCollection::new();
-
         // All FROM subqueries are nested, never correlated.
         let ast_cross_tables = match stmt.from {
             ast::From::Cross(v) => v,

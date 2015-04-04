@@ -12,10 +12,32 @@ pub trait ColumnValueOps: Sized {
     /// Used for predicate logic (such as the entire WHERE expression).
     fn tests_true(&self) -> bool;
 
+    /// Must return one of the following:
+    ///
+    /// * -1 for false
+    /// * 0 for null
+    /// * +1 for true
+    fn to_3vl(&self) -> i8;
+    fn from_3vl(value: i8) -> Self;
+
     fn cast(self, dbtype: DbType) -> Option<Self>;
+    fn concat(&self, rhs: &Self) -> Self;
     fn equals(&self, rhs: &Self) -> Self;
     fn not_equals(&self, rhs: &Self) -> Self;
-    fn and(&self, rhs: &Self) -> Self;
-    fn or(&self, rhs: &Self) -> Self;
-    fn concat(&self, rhs: &Self) -> Self;
+
+    fn not(&self) -> Self {
+        ColumnValueOps::from_3vl(-self.to_3vl())
+    }
+
+    fn and(&self, rhs: &Self) -> Self{
+        let (l, r) = (self.to_3vl(), rhs.to_3vl());
+
+        ColumnValueOps::from_3vl(if l < r { l } else { r })
+    }
+
+    fn or(&self, rhs: &Self) -> Self {
+        let (l, r) = (self.to_3vl(), rhs.to_3vl());
+
+        ColumnValueOps::from_3vl(if l > r { l } else { r })
+    }
 }

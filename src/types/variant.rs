@@ -151,6 +151,22 @@ impl ColumnValueOps for Variant {
         }
     }
 
+    fn to_3vl(&self) -> i8 {
+        match self {
+            &Variant::Null => 0,
+            v => if self.tests_true() { 1 } else { -1 }
+        }
+    }
+
+    fn from_3vl(value: i8) -> Self {
+        match value {
+            -1 => from_bool(false),
+            0 => Variant::Null,
+            1 => from_bool(true),
+            _ => panic!()
+        }
+    }
+
     fn cast(self, dbtype: DbType) -> Option<Self> {
         match (self, dbtype) {
             (e@Variant::Null, DbType::Null)
@@ -215,14 +231,6 @@ impl ColumnValueOps for Variant {
             },
             _ => from_bool(true)
         }
-    }
-
-    fn and(&self, rhs: &Self) -> Self {
-        from_bool(self.tests_true() && rhs.tests_true())
-    }
-
-    fn or(&self, rhs: &Self) -> Self {
-        from_bool(self.tests_true() || rhs.tests_true())
     }
 
     fn concat(&self, rhs: &Self) -> Self {
