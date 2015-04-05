@@ -46,9 +46,13 @@ impl TableInfo for Table {
     fn get_column_count(&self) -> u32 { self.columns.len() as u32 }
 
     fn find_column_by_offset(&self, offset: u32) -> Option<&Column> {
-        use std::iter::RandomAccessIterator;
+        let i = offset as usize;
 
-        self.columns.iter().idx(offset as usize)
+        if i < self.columns.len() {
+            Some(&self.columns[i])
+        } else {
+            None
+        }
     }
 
     fn find_column_by_name(&self, name: &Identifier) -> Option<&Column> {

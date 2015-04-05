@@ -137,7 +137,8 @@ impl TempDb {
 
         let table_name = Identifier::new(&stmt.table.table_name).unwrap();
 
-        let columns = try!(stmt.columns.into_iter().enumerate().map(|(i, column)| {
+        let columns_result: Result<_, String>;
+        columns_result = stmt.columns.into_iter().enumerate().map(|(i, column)| {
             let name = Identifier::new(&column.column_name).unwrap();
             let type_name = Identifier::new(&column.type_name).unwrap();
             let type_array_size = match column.type_array_size {
@@ -156,7 +157,9 @@ impl TempDb {
                 name: name,
                 dbtype: dbtype
             })
-        }).collect());
+        }).collect();
+
+        let columns = try!(columns_result);
 
         try!(self.add_table(Table {
             name: table_name,

@@ -1,7 +1,7 @@
 use super::super::lexer::Token;
 use super::{RuleError, RuleResult};
 
-#[derive(Copy)]
+#[derive(Copy, Clone)]
 pub struct Tokens<'a> {
     tokens: &'a [Token]
 }

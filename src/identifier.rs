@@ -106,7 +106,7 @@ mod test {
     #[test]
     fn test_identifier() {
         fn cmp(a: &'static str, b: &'static str) -> bool {
-            Identifier::new(a).unwrap().as_slice() == b
+            (&Identifier::new(a).unwrap() as &str) == b
         }
 
         fn cmp_none(a: &'static str) -> bool {

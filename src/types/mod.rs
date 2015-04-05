@@ -5,7 +5,7 @@ pub use self::variant::Variant;
 
 use std::borrow::Cow;
 
-#[derive(Debug, Copy)]
+#[derive(Debug, Copy, Clone)]
 pub enum DbType {
     /// A type that only contains the NULL value.
     Null,

@@ -75,7 +75,7 @@ pub fn read_udbinteger(bytes: &[u8]) -> u64 {
 
 pub fn read_sdbinteger(bytes: &[u8]) -> i64 {
     use std::mem;
-    use std::num::wrapping::WrappingOps;
+    use std::num::Wrapping;
 
     let value = read_udbinteger(bytes);
 
@@ -85,7 +85,7 @@ pub fn read_sdbinteger(bytes: &[u8]) -> i64 {
         // assumes that the platform uses two's complement
         // use wrapping to prevent overflow panics at runtime
         let v: i64 = mem::transmute(value);
-        v.wrapping_sub(half_unsigned_maximum)
+        (Wrapping(v) - Wrapping(half_unsigned_maximum)).0
     }
 }
 
@@ -124,7 +124,8 @@ pub fn write_sdbinteger(value: i64, buf: &mut [u8]) {
 
     let r: u64 = unsafe {
         // assumes that the platform uses two's complement
-        mem::transmute(value) ^ half_unsigned_maximum
+        let unsigned: u64 = mem::transmute(value);
+        unsigned ^ half_unsigned_maximum
     };
 
     write_udbinteger(r, buf)
@@ -133,7 +134,7 @@ pub fn write_sdbinteger(value: i64, buf: &mut [u8]) {
 pub fn write_dbfloat(value: f64, buf: &mut [u8]) {
     use std::mem;
 
-    let raw = unsafe {
+    let raw: u64 = unsafe {
         // assumes that the platform uses IEEE 754 encoding for floats
         mem::transmute(value)
     };

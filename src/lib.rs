@@ -1,4 +1,4 @@
-#![feature(convert, core, collections, into_cow)]
+#![feature(collections, into_cow)]
 #![allow(unused_variables, dead_code)]
 
 #[macro_use]
