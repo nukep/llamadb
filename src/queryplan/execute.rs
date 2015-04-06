@@ -100,6 +100,9 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
                     self.execute(yield_out_fn, result_cb, Some(&new_source))
                 }, source)
             },
+            &SExpression::TempGroupBy { source_id, ref yield_in_fn, ref group_by_values, ref yield_out_fn } => {
+                unimplemented!()
+            },
             &SExpression::Yield { ref fields } => {
                 let columns: Result<Vec<_>, ()>;
                 columns = fields.iter().map(|e| self.resolve_value(e, source)).collect();
@@ -119,6 +122,7 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
             },
             &SExpression::ColumnField { .. } |
             &SExpression::BinaryOp { .. } |
+            &SExpression::AggregateOp { .. } |
             &SExpression::Value(..) => {
                 // these expressions cannot contain yieldable rows.
                 Err(())
@@ -151,6 +155,9 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
                     BinaryOp::Concatenate => l.concat(&r),
                     _ => unimplemented!()
                 })
+            },
+            &SExpression::AggregateOp { ref op, source_id, ref value } => {
+                unimplemented!()
             },
             &SExpression::Map { source_id, ref yield_in_fn, ref yield_out_fn } => {
                 trace!("resolve_value; map {}", source_id);

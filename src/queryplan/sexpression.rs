@@ -16,6 +16,12 @@ where <DB as DatabaseInfo>::Table: 'a
         yield_in_fn: Box<SExpression<'a, DB>>,
         yield_out_fn: Box<SExpression<'a, DB>>
     },
+    TempGroupBy {
+        source_id: u32,
+        yield_in_fn: Box<SExpression<'a, DB>>,
+        group_by_values: Vec<SExpression<'a, DB>>,
+        yield_out_fn: Box<SExpression<'a, DB>>
+    },
     Yield {
         fields: Vec<SExpression<'a, DB>>
     },
@@ -31,6 +37,11 @@ where <DB as DatabaseInfo>::Table: 'a
         op: BinaryOp,
         lhs: Box<SExpression<'a, DB>>,
         rhs: Box<SExpression<'a, DB>>
+    },
+    AggregateOp {
+        op: AggregateOp,
+        source_id: u32,
+        value: Box<SExpression<'a, DB>>
     },
     Value(<DB as DatabaseInfo>::ColumnValue)
 }
@@ -64,6 +75,19 @@ where <DB as DatabaseInfo>::Table: 'a
                 try!(yield_out_fn.format(f, indent + 1));
                 write!(f, ")")
             },
+            &SExpression::TempGroupBy { source_id, ref yield_in_fn, ref group_by_values, ref yield_out_fn } => {
+                try!(writeln!(f, "(temp-group-by :source_id {}", source_id));
+                try!(yield_in_fn.format(f, indent + 1));
+                try!(writeln!(f, ""));
+                try!(writeln!(f, "(group-by-values "));
+                for group_by_value in group_by_values {
+                    try!(group_by_value.format(f, indent + 1));
+                    try!(writeln!(f, ""));
+                }
+                try!(writeln!(f, ")"));
+                try!(yield_out_fn.format(f, indent + 1));
+                write!(f, ")")
+            },
             &SExpression::Yield { ref fields } => {
                 try!(writeln!(f, "(yield "));
                 for (i, field) in fields.iter().enumerate() {
@@ -89,6 +113,11 @@ where <DB as DatabaseInfo>::Table: 'a
                 try!(lhs.format(f, indent + 1));
                 try!(writeln!(f, ""));
                 try!(rhs.format(f, indent + 1));
+                write!(f, ")")
+            },
+            &SExpression::AggregateOp { ref op, source_id, ref value } => {
+                try!(writeln!(f, "({} :source_id {} ", op.name(), source_id));
+                try!(value.format(f, indent + 1));
                 write!(f, ")")
             },
             &SExpression::Value(ref v) => {
@@ -135,6 +164,25 @@ impl BinaryOp {
             &BitAnd => "&",
             &BitOr => "|",
             &Concatenate => "concat"
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+pub enum AggregateOp {
+    Count,
+    First,
+    Avg
+}
+
+impl AggregateOp {
+    fn name(&self) -> &'static str {
+        use self::AggregateOp::*;
+
+        match self {
+            &Count => "count",
+            &First => "first",
+            &Avg => "avg"
         }
     }
 }
