@@ -48,9 +48,9 @@ struct ScanGroup<'a> {
 impl<'a> Group for ScanGroup<'a> {
     type ColumnValue = Variant;
 
-    fn iter<'b>(&'b self) -> Box<Iterator<Item=Box<[Variant]>> + 'b> {
+    fn iter<'b>(&'b self) -> Box<Iterator<Item=Cow<'b, [Variant]>> + 'b> {
         let table = self.table;
-        let columns: &'a [self::table::Column] = &table.columns;
+        let columns: &'b [self::table::Column] = &table.columns;
 
         Box::new(table.rowid_index.iter().map(move |key_v| {
             use byteutils;
@@ -75,7 +75,7 @@ impl<'a> Group for ScanGroup<'a> {
             let mut variable_length_offset = 0;
             let mut key_offset = 8;
 
-            let v: Vec<_> = table.columns.iter().map(|column| {
+            let v: Vec<Variant> = columns.iter().map(|column| {
                 let size = match column.dbtype.get_fixed_length() {
                     Some(l) => l as usize,
                     None => {
@@ -93,7 +93,7 @@ impl<'a> Group for ScanGroup<'a> {
                 value
             }).collect();
 
-            v.into_boxed_slice()
+            v.into_cow()
         }))
     }
 }

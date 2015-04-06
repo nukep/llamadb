@@ -1,4 +1,5 @@
 use databaseinfo::DatabaseInfo;
+use std::borrow::Cow;
 
 pub trait DatabaseStorage {
     type Info: DatabaseInfo;
@@ -10,5 +11,5 @@ pub trait DatabaseStorage {
 pub trait Group {
     type ColumnValue: Sized + 'static;
 
-    fn iter<'a>(&'a self) -> Box<Iterator<Item=Box<[Self::ColumnValue]>> + 'a>;
+    fn iter<'a>(&'a self) -> Box<Iterator<Item=Cow<'a, [Self::ColumnValue]>> + 'a>;
 }
