@@ -3,6 +3,9 @@ use databaseinfo::DatabaseInfo;
 use databasestorage::{DatabaseStorage, Group};
 use super::sexpression::{BinaryOp, SExpression};
 
+mod groupbuckets;
+use self::groupbuckets::GroupBuckets;
+
 enum SourceType<'a, ColumnValue: Sized + 'static> {
     Row(&'a [ColumnValue]),
     Group(&'a Group<ColumnValue=ColumnValue>)
@@ -62,6 +65,7 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
         }
     }
 
+    // TODO: result_cb should yield a boxed array instead of a reference
     pub fn execute_query_plan<'b, 'c>(&self, expr: &SExpression<'a, Storage::Info>,
     result_cb: &'c mut FnMut(&[<Storage::Info as DatabaseInfo>::ColumnValue]) -> Result<(), ()>)
     -> Result<(), ()>
@@ -101,7 +105,43 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
                 }, source)
             },
             &SExpression::TempGroupBy { source_id, ref yield_in_fn, ref group_by_values, ref yield_out_fn } => {
-                unimplemented!()
+                let mut group_buckets = GroupBuckets::new();
+
+                try!(self.execute(yield_in_fn, &mut |row| {
+                    let new_source = Source {
+                        parent: source,
+                        source_id: source_id,
+                        source_type: SourceType::Row(row)
+                    };
+
+                    let result: Result<Vec<_>, _> = group_by_values.iter().map(|value| {
+                        self.resolve_value(value, Some(&new_source))
+                    }).collect();
+
+                    let key = try!(result);
+
+                    // TODO: don't box up row
+                    let row_boxed = row.to_vec().into_boxed_slice();
+
+                    group_buckets.insert(key.into_boxed_slice(), row_boxed);
+
+                    Ok(())
+                }, source));
+
+                // the group buckets have been filled.
+                // now to yield for each group...
+
+                for group in group_buckets {
+                    let new_source = Source {
+                        parent: source,
+                        source_id: source_id,
+                        source_type: SourceType::Group(&group)
+                    };
+
+                    try!(self.execute(yield_out_fn, result_cb, Some(&new_source)));
+                }
+
+                Ok(())
             },
             &SExpression::Yield { ref fields } => {
                 let columns: Result<Vec<_>, ()>;

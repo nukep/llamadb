@@ -2,11 +2,13 @@ use columnvalueops::ColumnValueOps;
 use identifier::Identifier;
 use types::DbType;
 use std::fmt;
+use std::cmp::Eq;
+use std::hash::Hash;
 
 /// A read-only interface to information about the database schema.
 pub trait DatabaseInfo {
     type Table: TableInfo;
-    type ColumnValue: ColumnValueOps + fmt::Display + Clone + 'static;
+    type ColumnValue: ColumnValueOps + fmt::Display + Clone + Eq + Hash + 'static;
 
     fn find_table_by_name(&self, name: &Identifier) -> Option<&Self::Table>;
 }

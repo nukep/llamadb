@@ -1,5 +1,7 @@
 use databaseinfo::DatabaseInfo;
 use std::borrow::Cow;
+use std::cmp::Eq;
+use std::hash::Hash;
 
 pub trait DatabaseStorage {
     type Info: DatabaseInfo;
@@ -9,7 +11,7 @@ pub trait DatabaseStorage {
 }
 
 pub trait Group {
-    type ColumnValue: Sized + 'static;
+    type ColumnValue: Sized + Clone + Eq + Hash + 'static;
 
     fn iter<'a>(&'a self) -> Box<Iterator<Item=Cow<'a, [Self::ColumnValue]>> + 'a>;
 }
