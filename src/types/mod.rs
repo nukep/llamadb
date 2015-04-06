@@ -1,6 +1,8 @@
 use identifier::Identifier;
 
+mod f64nonan;
 mod variant;
+pub use self::f64nonan::F64NoNaN;
 pub use self::variant::Variant;
 
 use std::borrow::Cow;

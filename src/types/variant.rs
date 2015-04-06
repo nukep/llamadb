@@ -1,17 +1,18 @@
 use byteutils;
 use columnvalueops::ColumnValueOps;
 use types::DbType;
+use types::F64NoNaN;
 use std::borrow::{Cow, IntoCow};
 use std::fmt;
 
-#[derive(Clone)]
+#[derive(Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Variant {
     Null,
     Bytes(Vec<u8>),
     StringLiteral(String),
     SignedInteger(i64),
     UnsignedInteger(u64),
-    Float(f64)
+    Float(F64NoNaN)
 }
 
 impl fmt::Display for Variant {
@@ -22,7 +23,7 @@ impl fmt::Display for Variant {
             &Variant::StringLiteral(ref s) => write!(f, "{}", s),
             &Variant::SignedInteger(n) => write!(f, "{}", n),
             &Variant::UnsignedInteger(n) => write!(f, "{}", n),
-            &Variant::Float(n) => write!(f, "{}", n),
+            &Variant::Float(n) => write!(f, "{}", *n),
         }
     }
 }
@@ -48,7 +49,7 @@ impl ColumnValueOps for Variant {
         } else if let Ok(number) = s.parse() {
             Ok(Variant::SignedInteger(number))
         } else if let Ok(number) = s.parse() {
-            Ok(Variant::Float(number))
+            Ok(Variant::Float(F64NoNaN::new(number).unwrap()))
         } else {
             Err(s)
         }
@@ -77,7 +78,8 @@ impl ColumnValueOps for Variant {
                 }
             },
             DbType::F64 => {
-                Ok(Variant::Float(byteutils::read_dbfloat(&bytes)))
+                let f = byteutils::read_dbfloat(&bytes);
+                Ok(Variant::Float(F64NoNaN::new(f).unwrap()))
             },
             DbType::String => {
                 let len = bytes.len();
@@ -120,7 +122,7 @@ impl ColumnValueOps for Variant {
             },
             (Variant::Float(v), DbType::F64) => {
                 let mut buf = [0; 8];
-                byteutils::write_dbfloat(v, &mut buf);
+                byteutils::write_dbfloat(*v, &mut buf);
                 Ok(Box::new(buf))
             },
             _ => {
@@ -147,7 +149,7 @@ impl ColumnValueOps for Variant {
             &Variant::StringLiteral(ref s) => !s.is_empty(),
             &Variant::SignedInteger(n) => n != 0,
             &Variant::UnsignedInteger(n) => n != 0,
-            &Variant::Float(n) => n != 0.0
+            &Variant::Float(n) => *n != 0.0
         }
     }
 
