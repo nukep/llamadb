@@ -72,18 +72,37 @@ where <DB as DatabaseInfo>::Table: 'a
 
         let mut source_id: u32 = 0;
 
-        let mut source_id_fn = || {
+        let source_id_fn = || {
             let old_source_id = source_id;
             source_id += 1;
             old_source_id
         };
 
-        QueryPlan::compile_select_recurse(db, stmt, &scope, &mut source_id_fn)
+        let mut compiler = Compiler {
+            db: db,
+            new_source_id: source_id_fn
+        };
+
+        compiler.compile_select_recurse(stmt, &scope)
+    }
+}
+
+struct Compiler<'a, DB: DatabaseInfo, F>
+where DB: 'a, <DB as DatabaseInfo>::Table: 'a, F: FnMut() -> u32
+{
+    db: &'a DB,
+    new_source_id: F
+}
+
+impl<'a, DB: DatabaseInfo, F> Compiler<'a, DB, F>
+where DB: 'a, <DB as DatabaseInfo>::Table: 'a, F: FnMut() -> u32
+{
+    fn new_source_id(&mut self) -> u32 {
+        (&mut self.new_source_id)()
     }
 
-    fn compile_select_recurse<'b, F>(db: &'a DB, stmt: ast::SelectStatement, scope: &'b SourceScope<'a, 'b, DB>, new_source_id: &mut F)
+    fn compile_select_recurse<'b>(&mut self, stmt: ast::SelectStatement, scope: &'b SourceScope<'a, 'b, DB>)
     -> Result<QueryPlan<'a, DB>, QueryPlanCompileError>
-    where F: FnMut() -> u32
     {
         // Unimplemented syntaxes: GROUP BY, HAVING, ORDER BY
         // TODO - implement them!
@@ -104,7 +123,7 @@ where <DB as DatabaseInfo>::Table: 'a
         // This makes sense for INNER and OUTER joins, which also
         // contain ON (conditional) expressions.
 
-        let (new_scope, where_expr) = try!(QueryPlan::from_where(stmt.from, stmt.where_expr, db, scope, new_source_id));
+        let (new_scope, where_expr) = try!(self.from_where(stmt.from, stmt.where_expr, scope));
 
         // prevent accidental use of the old scope
         drop(scope);
@@ -153,7 +172,7 @@ where <DB as DatabaseInfo>::Table: 'a
                             }
                         };
 
-                        let e = try!(QueryPlan::ast_expression_to_sexpression(expr, db, &new_scope, new_source_id));
+                        let e = try!(self.ast_expression_to_sexpression(expr, &new_scope));
                         a.push((column_name, e));
                     }
                 }
@@ -199,9 +218,8 @@ where <DB as DatabaseInfo>::Table: 'a
         })
     }
 
-    fn from_where<'b, F>(from: ast::From, where_expr: Option<ast::Expression>, db: &'a DB, scope: &'b SourceScope<'a, 'b, DB>, new_source_id: &mut F)
+    fn from_where<'b>(&mut self, from: ast::From, where_expr: Option<ast::Expression>, scope: &'b SourceScope<'a, 'b, DB>)
     -> Result<(SourceScope<'a, 'b, DB>, Option<SExpression<'a, DB>>), QueryPlanCompileError>
-    where F: FnMut() -> u32
     {
         // TODO - avoid naive nested scans when indices are available
 
@@ -214,11 +232,11 @@ where <DB as DatabaseInfo>::Table: 'a
         let a: Vec<_> = try!(ast_cross_tables.into_iter().map(|ast_table_or_subquery| {
             match ast_table_or_subquery {
                 ast::TableOrSubquery::Subquery { subquery, alias } => {
-                    let plan = try!(QueryPlan::compile_select_recurse(db, *subquery, scope, new_source_id));
+                    let plan = try!(self.compile_select_recurse(*subquery, scope));
                     let alias_identifier = try!(new_identifier(&alias));
 
                     let s = TableOrSubquery::Subquery {
-                        source_id: new_source_id(),
+                        source_id: self.new_source_id(),
                         expr: plan.expr,
                         out_column_names: plan.out_column_names
                     };
@@ -227,7 +245,7 @@ where <DB as DatabaseInfo>::Table: 'a
                 },
                 ast::TableOrSubquery::Table { table, alias } => {
                     let table_name_identifier = try!(new_identifier(&table.table_name));
-                    let table = match db.find_table_by_name(&table_name_identifier) {
+                    let table = match self.db.find_table_by_name(&table_name_identifier) {
                         Some(table) => table,
                         None => return Err(QueryPlanCompileError::TableDoesNotExist(table_name_identifier))
                     };
@@ -239,7 +257,7 @@ where <DB as DatabaseInfo>::Table: 'a
                     };
 
                     let s = TableOrSubquery::Table {
-                        source_id: new_source_id(),
+                        source_id: self.new_source_id(),
                         table: table
                     };
 
@@ -257,7 +275,7 @@ where <DB as DatabaseInfo>::Table: 'a
         };
 
         let where_expr = if let Some(where_expr) = where_expr {
-            Some(try!(QueryPlan::ast_expression_to_sexpression(where_expr, db, &new_scope, new_source_id)))
+            Some(try!(self.ast_expression_to_sexpression(where_expr, &new_scope)))
         } else {
             None
         };
@@ -265,9 +283,8 @@ where <DB as DatabaseInfo>::Table: 'a
         Ok((new_scope, where_expr))
     }
 
-    fn ast_expression_to_sexpression<'b, F>(ast: ast::Expression, db: &'a DB, scope: &'b SourceScope<'a, 'b, DB>, new_source_id: &mut F)
+    fn ast_expression_to_sexpression<'b>(&mut self, ast: ast::Expression, scope: &'b SourceScope<'a, 'b, DB>)
     -> Result<SExpression<'a, DB>, QueryPlanCompileError>
-    where F: FnMut() -> u32
     {
         use std::borrow::IntoCow;
 
@@ -300,8 +317,8 @@ where <DB as DatabaseInfo>::Table: 'a
                 })
             },
             ast::Expression::BinaryOp { lhs, rhs, op } => {
-                let l = try!(QueryPlan::ast_expression_to_sexpression(*lhs, db, scope, new_source_id));
-                let r = try!(QueryPlan::ast_expression_to_sexpression(*rhs, db, scope, new_source_id));
+                let l = try!(self.ast_expression_to_sexpression(*lhs, scope));
+                let r = try!(self.ast_expression_to_sexpression(*rhs, scope));
 
                 Ok(SExpression::BinaryOp {
                     op: ast_binaryop_to_sexpression_binaryop(op),
@@ -322,9 +339,9 @@ where <DB as DatabaseInfo>::Table: 'a
                 }
             },
             ast::Expression::Subquery(subquery) => {
-                let source_id = new_source_id();
+                let source_id = self.new_source_id();
 
-                let plan = try!(QueryPlan::compile_select_recurse(db, *subquery, scope, new_source_id));
+                let plan = try!(self.compile_select_recurse(*subquery, scope));
 
                 Ok(SExpression::Map {
                     source_id: source_id,
