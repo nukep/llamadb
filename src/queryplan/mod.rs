@@ -94,6 +94,60 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a, F: FnMut() -> u32
     new_source_id: F
 }
 
+struct FromWhere<'a, DB: DatabaseInfo>
+where <DB as DatabaseInfo>::Table: 'a
+{
+    tables: Vec<FromWhereTableOrSubquery<'a, DB>>,
+    where_expr: Option<SExpression<'a, DB>>
+}
+
+enum FromWhereTableOrSubquery<'a, DB: DatabaseInfo>
+where <DB as DatabaseInfo>::Table: 'a
+{
+    Table {
+        source_id: u32,
+        table: &'a <DB as DatabaseInfo>::Table
+    },
+    Subquery {
+        source_id: u32,
+        expr: SExpression<'a, DB>
+    }
+}
+
+impl<'a, DB: DatabaseInfo> FromWhere<'a, DB>
+where <DB as DatabaseInfo>::Table: 'a
+{
+    fn evaluate(self, inner_expr: SExpression<'a, DB>) -> SExpression<'a, DB> {
+        let core_expr = if let Some(where_expr) = self.where_expr {
+            SExpression::If {
+                predicate: Box::new(where_expr),
+                yield_fn: Box::new(inner_expr)
+            }
+        } else {
+            inner_expr
+        };
+
+        self.tables.into_iter().fold(core_expr, |nested_expr, x| {
+            match x {
+                FromWhereTableOrSubquery::Subquery { source_id, expr } => {
+                    SExpression::Map {
+                        source_id: source_id,
+                        yield_in_fn: Box::new(expr),
+                        yield_out_fn: Box::new(nested_expr)
+                    }
+                },
+                FromWhereTableOrSubquery::Table { source_id, table } => {
+                    SExpression::Scan {
+                        source_id: source_id,
+                        table: table,
+                        yield_fn: Box::new(nested_expr)
+                    }
+                }
+            }
+        })
+    }
+}
+
 impl<'a, DB: DatabaseInfo, F> Compiler<'a, DB, F>
 where DB: 'a, <DB as DatabaseInfo>::Table: 'a, F: FnMut() -> u32
 {
@@ -123,7 +177,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a, F: FnMut() -> u32
         // This makes sense for INNER and OUTER joins, which also
         // contain ON (conditional) expressions.
 
-        let (new_scope, where_expr) = try!(self.from_where(stmt.from, stmt.where_expr, scope));
+        let (new_scope, from_where) = try!(self.from_where(stmt.from, stmt.where_expr, scope));
 
         // prevent accidental use of the old scope
         drop(scope);
@@ -183,34 +237,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a, F: FnMut() -> u32
             (ColumnNames::new(column_names), select_exprs)
         };
 
-        let core_expr = if let Some(where_expr) = where_expr {
-            SExpression::If {
-                predicate: Box::new(where_expr),
-                yield_fn: Box::new(SExpression::Yield { fields: select_exprs })
-            }
-        } else {
-            SExpression::Yield { fields: select_exprs }
-        };
-
-        // table references and source ids need to be known at this point
-        let expr = new_scope.tables.into_iter().fold(core_expr, |nested_expr, x| {
-            match x {
-                TableOrSubquery::Subquery { source_id, expr, .. } => {
-                    SExpression::Map {
-                        source_id: source_id,
-                        yield_in_fn: Box::new(expr),
-                        yield_out_fn: Box::new(nested_expr)
-                    }
-                },
-                TableOrSubquery::Table { source_id, table } => {
-                    SExpression::Scan {
-                        source_id: source_id,
-                        table: table,
-                        yield_fn: Box::new(nested_expr)
-                    }
-                }
-            }
-        });
+        let expr = from_where.evaluate(SExpression::Yield { fields: select_exprs });
 
         Ok(QueryPlan {
             expr: expr,
@@ -219,7 +246,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a, F: FnMut() -> u32
     }
 
     fn from_where<'b>(&mut self, from: ast::From, where_expr: Option<ast::Expression>, scope: &'b SourceScope<'a, 'b, DB>)
-    -> Result<(SourceScope<'a, 'b, DB>, Option<SExpression<'a, DB>>), QueryPlanCompileError>
+    -> Result<(SourceScope<'a, 'b, DB>, FromWhere<'a, DB>), QueryPlanCompileError>
     {
         // TODO - avoid naive nested scans when indices are available
 
@@ -235,13 +262,19 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a, F: FnMut() -> u32
                     let plan = try!(self.compile_select_recurse(*subquery, scope));
                     let alias_identifier = try!(new_identifier(&alias));
 
+                    let source_id = self.new_source_id();
+
                     let s = TableOrSubquery::Subquery {
-                        source_id: self.new_source_id(),
-                        expr: plan.expr,
+                        source_id: source_id,
                         out_column_names: plan.out_column_names
                     };
 
-                    Ok((s, alias_identifier))
+                    let t = FromWhereTableOrSubquery::Subquery {
+                        source_id: source_id,
+                        expr: plan.expr
+                    };
+
+                    Ok(((s, t), alias_identifier))
                 },
                 ast::TableOrSubquery::Table { table, alias } => {
                     let table_name_identifier = try!(new_identifier(&table.table_name));
@@ -256,21 +289,30 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a, F: FnMut() -> u32
                         table_name_identifier
                     };
 
+                    let source_id = self.new_source_id();
+
                     let s = TableOrSubquery::Table {
-                        source_id: self.new_source_id(),
+                        source_id: source_id,
                         table: table
                     };
 
-                    Ok((s, alias_identifier))
+                    let t = FromWhereTableOrSubquery::Table {
+                        source_id: source_id,
+                        table: table
+                    };
+
+                    Ok(((s, t), alias_identifier))
                 }
             }
         }).collect());
 
-        let (tables, table_aliases) = a.into_iter().unzip();
+        let (tables, table_aliases): (Vec<_>, _) = a.into_iter().unzip();
+
+        let (source_tables, fromwhere_tables) = tables.into_iter().unzip();
 
         let new_scope = SourceScope {
             parent: Some(scope),
-            tables: tables,
+            tables: source_tables,
             table_aliases: table_aliases
         };
 
@@ -280,7 +322,10 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a, F: FnMut() -> u32
             None
         };
 
-        Ok((new_scope, where_expr))
+        Ok((new_scope, FromWhere {
+            tables: fromwhere_tables,
+            where_expr: where_expr
+        }))
     }
 
     fn ast_expression_to_sexpression<'b>(&mut self, ast: ast::Expression, scope: &'b SourceScope<'a, 'b, DB>)

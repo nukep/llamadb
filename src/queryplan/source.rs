@@ -1,7 +1,6 @@
 use databaseinfo::{ColumnInfo, DatabaseInfo, TableInfo};
 use identifier::Identifier;
 use super::columnnames::ColumnNames;
-use super::sexpression::SExpression;
 
 pub enum TableOrSubquery<'a, DB: DatabaseInfo>
 where <DB as DatabaseInfo>::Table: 'a
@@ -12,7 +11,6 @@ where <DB as DatabaseInfo>::Table: 'a
     },
     Subquery {
         source_id: u32,
-        expr: SExpression<'a, DB>,
         out_column_names: ColumnNames
     }
 }
