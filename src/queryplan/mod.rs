@@ -85,8 +85,6 @@ where <DB as DatabaseInfo>::Table: 'a
     -> Result<QueryPlan<'a, DB>, QueryPlanCompileError>
     where F: FnMut() -> u32
     {
-        // TODO - avoid naive nested scans when indices are available
-
         // Unimplemented syntaxes: GROUP BY, HAVING, ORDER BY
         // TODO - implement them!
         if !stmt.group_by.is_empty() { unimplemented!() }
@@ -102,67 +100,14 @@ where <DB as DatabaseInfo>::Table: 'a
             Identifier::new(&s).unwrap()
         };
 
-        // All FROM subqueries are nested, never correlated.
-        let ast_cross_tables = match stmt.from {
-            ast::From::Cross(v) => v,
-            ast::From::Join {..} => unimplemented!()
-        };
+        // FROM and WHERE are compiled together.
+        // This makes sense for INNER and OUTER joins, which also
+        // contain ON (conditional) expressions.
 
-        let new_scope = {
-            let a: Vec<_> = try!(ast_cross_tables.into_iter().map(|ast_table_or_subquery| {
-                match ast_table_or_subquery {
-                    ast::TableOrSubquery::Subquery { subquery, alias } => {
-                        let plan = try!(QueryPlan::compile_select_recurse(db, *subquery, scope, new_source_id));
-                        let alias_identifier = try!(new_identifier(&alias));
-
-                        let s = TableOrSubquery::Subquery {
-                            source_id: new_source_id(),
-                            expr: plan.expr,
-                            out_column_names: plan.out_column_names
-                        };
-
-                        Ok((s, alias_identifier))
-                    },
-                    ast::TableOrSubquery::Table { table, alias } => {
-                        let table_name_identifier = try!(new_identifier(&table.table_name));
-                        let table = match db.find_table_by_name(&table_name_identifier) {
-                            Some(table) => table,
-                            None => return Err(QueryPlanCompileError::TableDoesNotExist(table_name_identifier))
-                        };
-
-                        let alias_identifier = if let Some(alias) = alias {
-                            try!(new_identifier(&alias))
-                        } else {
-                            table_name_identifier
-                        };
-
-                        let s = TableOrSubquery::Table {
-                            source_id: new_source_id(),
-                            table: table
-                        };
-
-                        Ok((s, alias_identifier))
-                    }
-                }
-            }).collect());
-
-            let (tables, table_aliases) = a.into_iter().unzip();
-
-            SourceScope {
-                parent: Some(scope),
-                tables: tables,
-                table_aliases: table_aliases
-            }
-        };
+        let (new_scope, where_expr) = try!(QueryPlan::from_where(stmt.from, stmt.where_expr, db, scope, new_source_id));
 
         // prevent accidental use of the old scope
         drop(scope);
-
-        let where_expr = if let Some(where_expr) = stmt.where_expr {
-            Some(try!(QueryPlan::ast_expression_to_sexpression(where_expr, db, &new_scope, new_source_id)))
-        } else {
-            None
-        };
 
         // TODO: refactor this terrible mess.
         let (column_names, select_exprs) = {
@@ -252,6 +197,72 @@ where <DB as DatabaseInfo>::Table: 'a
             expr: expr,
             out_column_names: column_names
         })
+    }
+
+    fn from_where<'b, F>(from: ast::From, where_expr: Option<ast::Expression>, db: &'a DB, scope: &'b SourceScope<'a, 'b, DB>, new_source_id: &mut F)
+    -> Result<(SourceScope<'a, 'b, DB>, Option<SExpression<'a, DB>>), QueryPlanCompileError>
+    where F: FnMut() -> u32
+    {
+        // TODO - avoid naive nested scans when indices are available
+
+        // All FROM subqueries are nested, never correlated.
+        let ast_cross_tables = match from {
+            ast::From::Cross(v) => v,
+            ast::From::Join {..} => unimplemented!()
+        };
+
+        let a: Vec<_> = try!(ast_cross_tables.into_iter().map(|ast_table_or_subquery| {
+            match ast_table_or_subquery {
+                ast::TableOrSubquery::Subquery { subquery, alias } => {
+                    let plan = try!(QueryPlan::compile_select_recurse(db, *subquery, scope, new_source_id));
+                    let alias_identifier = try!(new_identifier(&alias));
+
+                    let s = TableOrSubquery::Subquery {
+                        source_id: new_source_id(),
+                        expr: plan.expr,
+                        out_column_names: plan.out_column_names
+                    };
+
+                    Ok((s, alias_identifier))
+                },
+                ast::TableOrSubquery::Table { table, alias } => {
+                    let table_name_identifier = try!(new_identifier(&table.table_name));
+                    let table = match db.find_table_by_name(&table_name_identifier) {
+                        Some(table) => table,
+                        None => return Err(QueryPlanCompileError::TableDoesNotExist(table_name_identifier))
+                    };
+
+                    let alias_identifier = if let Some(alias) = alias {
+                        try!(new_identifier(&alias))
+                    } else {
+                        table_name_identifier
+                    };
+
+                    let s = TableOrSubquery::Table {
+                        source_id: new_source_id(),
+                        table: table
+                    };
+
+                    Ok((s, alias_identifier))
+                }
+            }
+        }).collect());
+
+        let (tables, table_aliases) = a.into_iter().unzip();
+
+        let new_scope = SourceScope {
+            parent: Some(scope),
+            tables: tables,
+            table_aliases: table_aliases
+        };
+
+        let where_expr = if let Some(where_expr) = where_expr {
+            Some(try!(QueryPlan::ast_expression_to_sexpression(where_expr, db, &new_scope, new_source_id)))
+        } else {
+            None
+        };
+
+        Ok((new_scope, where_expr))
     }
 
     fn ast_expression_to_sexpression<'b, F>(ast: ast::Expression, db: &'a DB, scope: &'b SourceScope<'a, 'b, DB>, new_source_id: &mut F)
