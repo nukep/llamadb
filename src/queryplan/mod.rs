@@ -5,11 +5,9 @@ use sqlsyntax::ast;
 
 use std::fmt;
 
-mod columnnames;
 mod execute;
 mod sexpression;
 mod source;
-pub use self::columnnames::*;
 pub use self::execute::*;
 pub use self::sexpression::*;
 use self::source::*;
@@ -20,7 +18,9 @@ pub enum QueryPlanCompileError {
     AmbiguousColumnName(Identifier),
     BadIdentifier(String),
     BadStringLiteral(String),
-    BadNumberLiteral(String)
+    BadNumberLiteral(String),
+    UnknownFunctionName(Identifier),
+    AggregateFunctionRequiresOneArgument
 }
 
 impl fmt::Display for QueryPlanCompileError {
@@ -43,6 +43,12 @@ impl fmt::Display for QueryPlanCompileError {
             &BadNumberLiteral(ref s) => {
                 write!(f, "bad number literal: {}", s)
             },
+            &UnknownFunctionName(ref s) => {
+                write!(f, "unknown function name: {}", s)
+            },
+            &AggregateFunctionRequiresOneArgument => {
+                write!(f, "aggregate function requires exactly one argument")
+            },
         }
     }
 }
@@ -51,7 +57,7 @@ pub struct QueryPlan<'a, DB: DatabaseInfo>
 where <DB as DatabaseInfo>::Table: 'a
 {
     pub expr: SExpression<'a, DB>,
-    pub out_column_names: ColumnNames
+    pub out_column_names: Vec<Identifier>
 }
 
 fn new_identifier(value: &str) -> Result<Identifier, QueryPlanCompileError> {
@@ -64,11 +70,7 @@ where <DB as DatabaseInfo>::Table: 'a
     pub fn compile_select(db: &'a DB, stmt: ast::SelectStatement)
     -> Result<QueryPlan<'a, DB>, QueryPlanCompileError>
     {
-        let scope = SourceScope {
-            parent: None,
-            tables: Vec::new(),
-            table_aliases: Vec::new()
-        };
+        let scope = SourceScope::new(None, Vec::new(), Vec::new());
 
         let mut source_id: u32 = 0;
 
@@ -155,7 +157,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a, F: FnMut() -> u32
         (&mut self.new_source_id)()
     }
 
-    fn compile_select_recurse<'b>(&mut self, stmt: ast::SelectStatement, scope: &'b SourceScope<'a, 'b, DB>)
+    fn compile_select_recurse<'b>(&mut self, stmt: ast::SelectStatement, outer_scope: &'b SourceScope<'b>)
     -> Result<QueryPlan<'a, DB>, QueryPlanCompileError>
     {
         // Unimplemented syntaxes: GROUP BY, HAVING, ORDER BY
@@ -177,41 +179,23 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a, F: FnMut() -> u32
         // This makes sense for INNER and OUTER joins, which also
         // contain ON (conditional) expressions.
 
-        let (new_scope, from_where) = try!(self.from_where(stmt.from, stmt.where_expr, scope));
+        let (new_scope, from_where) = try!(self.from_where(stmt.from, stmt.where_expr, outer_scope));
 
-        // prevent accidental use of the old scope
-        drop(scope);
-
-        // TODO: refactor this terrible mess.
         let (column_names, select_exprs) = {
             let mut a: Vec<_> = Vec::new();
             for c in stmt.result_columns {
                 match c {
                     ast::SelectColumn::AllColumns => {
-                        for (i, table) in new_scope.tables.iter().enumerate() {
-                            match table {
-                                &TableOrSubquery::Table { source_id, table} => {
-                                    let it = table.get_column_names().into_iter().enumerate().map(|(i, name)| {
-                                        (name, SExpression::ColumnField {
-                                            source_id: source_id,
-                                            column_offset: i as u32
-                                        })
-                                    });
+                        a.extend(new_scope.tables().iter().flat_map(|table| {
+                            let source_id = table.source_id;
 
-                                    a.extend(it);
-                                },
-                                &TableOrSubquery::Subquery { source_id, ref out_column_names, .. } => {
-                                    let it = out_column_names.iter().enumerate().map(|(i, name)| {
-                                        (name.clone(), SExpression::ColumnField {
-                                            source_id: source_id,
-                                            column_offset: i as u32
-                                        })
-                                    });
-
-                                    a.extend(it);
-                                }
-                            }
-                        }
+                            table.out_column_names.iter().enumerate().map(move |(i, name)| {
+                                (name.clone(), SExpression::ColumnField {
+                                    source_id: source_id,
+                                    column_offset: i as u32
+                                })
+                            })
+                        }));
                     },
                     ast::SelectColumn::Expr { expr, alias } => {
                         let column_name = if let Some(alias) = alias {
@@ -232,9 +216,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a, F: FnMut() -> u32
                 }
             }
 
-            let (column_names, select_exprs) = a.into_iter().unzip();
-
-            (ColumnNames::new(column_names), select_exprs)
+            a.into_iter().unzip()
         };
 
         let expr = from_where.evaluate(SExpression::Yield { fields: select_exprs });
@@ -245,8 +227,8 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a, F: FnMut() -> u32
         })
     }
 
-    fn from_where<'b>(&mut self, from: ast::From, where_expr: Option<ast::Expression>, scope: &'b SourceScope<'a, 'b, DB>)
-    -> Result<(SourceScope<'a, 'b, DB>, FromWhere<'a, DB>), QueryPlanCompileError>
+    fn from_where<'b>(&mut self, from: ast::From, where_expr: Option<ast::Expression>, scope: &'b SourceScope<'b>)
+    -> Result<(SourceScope<'b>, FromWhere<'a, DB>), QueryPlanCompileError>
     {
         // TODO - avoid naive nested scans when indices are available
 
@@ -264,7 +246,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a, F: FnMut() -> u32
 
                     let source_id = self.new_source_id();
 
-                    let s = TableOrSubquery::Subquery {
+                    let s = TableOrSubquery {
                         source_id: source_id,
                         out_column_names: plan.out_column_names
                     };
@@ -291,9 +273,9 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a, F: FnMut() -> u32
 
                     let source_id = self.new_source_id();
 
-                    let s = TableOrSubquery::Table {
+                    let s = TableOrSubquery {
                         source_id: source_id,
-                        table: table
+                        out_column_names: table.get_column_names()
                     };
 
                     let t = FromWhereTableOrSubquery::Table {
@@ -310,11 +292,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a, F: FnMut() -> u32
 
         let (source_tables, fromwhere_tables) = tables.into_iter().unzip();
 
-        let new_scope = SourceScope {
-            parent: Some(scope),
-            tables: source_tables,
-            table_aliases: table_aliases
-        };
+        let new_scope = SourceScope::new(Some(scope), source_tables, table_aliases);
 
         let where_expr = if let Some(where_expr) = where_expr {
             Some(try!(self.ast_expression_to_sexpression(where_expr, &new_scope)))
@@ -328,7 +306,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a, F: FnMut() -> u32
         }))
     }
 
-    fn ast_expression_to_sexpression<'b>(&mut self, ast: ast::Expression, scope: &'b SourceScope<'a, 'b, DB>)
+    fn ast_expression_to_sexpression<'b>(&mut self, ast: ast::Expression, scope: &'b SourceScope<'b>)
     -> Result<SExpression<'a, DB>, QueryPlanCompileError>
     {
         use std::borrow::IntoCow;
@@ -396,7 +374,33 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a, F: FnMut() -> u32
                         column_offset: 0
                     })
                 })
-            }
+            },
+            ast::Expression::FunctionCall { name, arguments } => {
+                let ident = try!(new_identifier(&name));
+
+                macro_rules! aggregate {
+                    ($op:expr) => (
+                        if arguments.len() != 1 {
+                            Err(QueryPlanCompileError::AggregateFunctionRequiresOneArgument)
+                        } else {
+                            let arg = arguments.into_iter().nth(0).unwrap();
+                            let value = try!(self.ast_expression_to_sexpression(arg, scope));
+                            let source_id = unimplemented!();
+                            Ok(SExpression::AggregateOp {
+                                op: $op,
+                                source_id: source_id,
+                                value: Box::new(value)
+                            })
+                        }
+                    )
+                }
+
+                match &ident as &str {
+                    "count" => aggregate!(AggregateOp::Count),
+                    "avg" => aggregate!(AggregateOp::Avg),
+                    _ => Err(QueryPlanCompileError::UnknownFunctionName(ident))
+                }
+            },
             e => panic!("unimplemented: {:?}", e)
         }
     }
