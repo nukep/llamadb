@@ -77,6 +77,8 @@ where <DB as DatabaseInfo>::Table: 'a
         let mut next_source_id = 0;
         let mut next_query_id = 1;
 
+        let mut groups_info = GroupsInfo::new();
+
         let compiler = QueryCompiler {
             query_id: 0,
             db: db,
@@ -85,7 +87,31 @@ where <DB as DatabaseInfo>::Table: 'a
             next_query_id: &mut next_query_id
         };
 
-        compiler.compile(stmt, &scope)
+        compiler.compile(stmt, &scope, &mut groups_info)
+    }
+}
+
+struct GroupsInfo {
+    innermost_nonaggregated_query: Option<u32>
+}
+
+impl GroupsInfo {
+    fn new() -> GroupsInfo {
+        GroupsInfo {
+            innermost_nonaggregated_query: None
+        }
+    }
+
+    fn add_query_id(&mut self, query_id: u32) {
+        // The innermost query of any two queries is the one with the highest ID
+
+        if self.innermost_nonaggregated_query.is_none() {
+            self.innermost_nonaggregated_query = Some(query_id);
+        } else {
+            if query_id > self.innermost_nonaggregated_query.unwrap() {
+                self.innermost_nonaggregated_query = Some(query_id);
+            }
+        }
     }
 }
 
@@ -175,7 +201,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
         *self.source_id_to_query_id.get(&source_id).unwrap()
     }
 
-    fn compile<'b>(mut self, stmt: ast::SelectStatement, outer_scope: &'b SourceScope<'b>)
+    fn compile<'b>(mut self, stmt: ast::SelectStatement, outer_scope: &'b SourceScope<'b>, groups_info: &mut GroupsInfo)
     -> Result<QueryPlan<'a, DB>, QueryPlanCompileError>
     {
         // Unimplemented syntaxes: GROUP BY, HAVING, ORDER BY
@@ -188,9 +214,9 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
         // This makes sense for INNER and OUTER joins, which also
         // contain ON (conditional) expressions.
 
-        let (new_scope, from_where) = try!(self.from_where(stmt.from, stmt.where_expr, outer_scope));
+        let (new_scope, from_where) = try!(self.from_where(stmt.from, stmt.where_expr, outer_scope, groups_info));
 
-        let (column_names, select_exprs) = try!(self.select(stmt.result_columns, &new_scope));
+        let (column_names, select_exprs) = try!(self.select(stmt.result_columns, &new_scope, groups_info));
 
         let expr = from_where.evaluate(SExpression::Yield { fields: select_exprs });
 
@@ -200,7 +226,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
         })
     }
 
-    fn from_where<'b>(&mut self, from: ast::From, where_expr: Option<ast::Expression>, scope: &'b SourceScope<'b>)
+    fn from_where<'b>(&mut self, from: ast::From, where_expr: Option<ast::Expression>, scope: &'b SourceScope<'b>, groups_info: &mut GroupsInfo)
     -> Result<(SourceScope<'b>, FromWhere<'a, DB>), QueryPlanCompileError>
     {
         // TODO - avoid naive nested scans when indices are available
@@ -223,7 +249,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
                             next_query_id: self.next_query_id
                         };
 
-                        try!(compiler.compile(*subquery, scope))
+                        try!(compiler.compile(*subquery, scope, groups_info))
                     };
                     let alias_identifier = try!(new_identifier(&alias));
 
@@ -278,7 +304,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
         let new_scope = SourceScope::new(Some(scope), source_tables, table_aliases);
 
         let where_expr = if let Some(where_expr) = where_expr {
-            Some(try!(self.ast_expression_to_sexpression(where_expr, &new_scope)))
+            Some(try!(self.ast_expression_to_sexpression(where_expr, &new_scope, groups_info)))
         } else {
             None
         };
@@ -289,7 +315,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
         }))
     }
 
-    fn select<'b>(&mut self, result_columns: Vec<ast::SelectColumn>, scope: &'b SourceScope<'b>)
+    fn select<'b>(&mut self, result_columns: Vec<ast::SelectColumn>, scope: &'b SourceScope<'b>, groups_info: &mut GroupsInfo)
     -> Result<(Vec<Identifier>, Vec<SExpression<'a, DB>>), QueryPlanCompileError>
     {
         let mut arbitrary_column_count = 0;
@@ -330,7 +356,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
                         }
                     };
 
-                    let e = try!(self.ast_expression_to_sexpression(expr, &scope));
+                    let e = try!(self.ast_expression_to_sexpression(expr, &scope, groups_info));
                     a.push((column_name, e));
                 }
             }
@@ -339,7 +365,8 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
         Ok(a.into_iter().unzip())
     }
 
-    fn ast_expression_to_sexpression<'b>(&mut self, ast: ast::Expression, scope: &'b SourceScope<'b>)
+    fn ast_expression_to_sexpression<'b>(&mut self, ast: ast::Expression, scope: &'b SourceScope<'b>,
+        groups_info: &mut GroupsInfo)
     -> Result<SExpression<'a, DB>, QueryPlanCompileError>
     {
         use std::borrow::IntoCow;
@@ -352,6 +379,8 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
                     Some(v) => v,
                     None => return Err(QueryPlanCompileError::AmbiguousColumnName(column_identifier))
                 };
+
+                groups_info.add_query_id(self.get_query_id_from_source_id(source_id));
 
                 Ok(SExpression::ColumnField {
                     source_id: source_id,
@@ -367,14 +396,16 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
                     None => return Err(QueryPlanCompileError::AmbiguousColumnName(column_identifier))
                 };
 
+                groups_info.add_query_id(self.get_query_id_from_source_id(source_id));
+
                 Ok(SExpression::ColumnField {
                     source_id: source_id,
                     column_offset: column_offset
                 })
             },
             ast::Expression::BinaryOp { lhs, rhs, op } => {
-                let l = try!(self.ast_expression_to_sexpression(*lhs, scope));
-                let r = try!(self.ast_expression_to_sexpression(*rhs, scope));
+                let l = try!(self.ast_expression_to_sexpression(*lhs, scope, groups_info));
+                let r = try!(self.ast_expression_to_sexpression(*rhs, scope, groups_info));
 
                 Ok(SExpression::BinaryOp {
                     op: ast_binaryop_to_sexpression_binaryop(op),
@@ -405,7 +436,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
                     next_query_id: self.next_query_id
                 };
 
-                let plan = try!(compiler.compile(*subquery, scope));
+                let plan = try!(compiler.compile(*subquery, scope, groups_info));
 
                 Ok(SExpression::Map {
                     source_id: source_id,
@@ -425,7 +456,14 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
                             Err(QueryPlanCompileError::AggregateFunctionRequiresOneArgument)
                         } else {
                             let arg = arguments.into_iter().nth(0).unwrap();
-                            let value = try!(self.ast_expression_to_sexpression(arg, scope));
+
+                            let mut g = GroupsInfo::new();
+
+                            let value = try!(self.ast_expression_to_sexpression(arg, scope, &mut g));
+
+                            let new_groups = groups_info.queries_used_as_groups.union(&g.queries_used_as_groups).cloned().collect();
+                            groups_info.queries_used_as_groups = new_groups;
+
                             let source_id = unimplemented!();
                             Ok(SExpression::AggregateOp {
                                 op: $op,
