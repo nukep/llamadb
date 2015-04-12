@@ -166,58 +166,13 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a, F: FnMut() -> u32
         if stmt.having.is_some() { unimplemented!() }
         if !stmt.order_by.is_empty() { unimplemented!() }
 
-        let mut arbitrary_column_count = 0;
-
-        let mut arbitrary_column_name = || {
-            let s = format!("_{}", arbitrary_column_count);
-            arbitrary_column_count += 1;
-
-            Identifier::new(&s).unwrap()
-        };
-
         // FROM and WHERE are compiled together.
         // This makes sense for INNER and OUTER joins, which also
         // contain ON (conditional) expressions.
 
         let (new_scope, from_where) = try!(self.from_where(stmt.from, stmt.where_expr, outer_scope));
 
-        let (column_names, select_exprs) = {
-            let mut a: Vec<_> = Vec::new();
-            for c in stmt.result_columns {
-                match c {
-                    ast::SelectColumn::AllColumns => {
-                        a.extend(new_scope.tables().iter().flat_map(|table| {
-                            let source_id = table.source_id;
-
-                            table.out_column_names.iter().enumerate().map(move |(i, name)| {
-                                (name.clone(), SExpression::ColumnField {
-                                    source_id: source_id,
-                                    column_offset: i as u32
-                                })
-                            })
-                        }));
-                    },
-                    ast::SelectColumn::Expr { expr, alias } => {
-                        let column_name = if let Some(alias) = alias {
-                            try!(new_identifier(&alias))
-                        } else {
-                            // if the expression is a simple identifier, make that
-                            // the column name. else, assign an arbitrary name.
-                            if let &ast::Expression::Ident(ref n) = &expr {
-                                try!(new_identifier(n))
-                            } else {
-                                arbitrary_column_name()
-                            }
-                        };
-
-                        let e = try!(self.ast_expression_to_sexpression(expr, &new_scope));
-                        a.push((column_name, e));
-                    }
-                }
-            }
-
-            a.into_iter().unzip()
-        };
+        let (column_names, select_exprs) = try!(self.select(stmt.result_columns, &new_scope));
 
         let expr = from_where.evaluate(SExpression::Yield { fields: select_exprs });
 
@@ -304,6 +259,56 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a, F: FnMut() -> u32
             tables: fromwhere_tables,
             where_expr: where_expr
         }))
+    }
+
+    fn select<'b>(&mut self, result_columns: Vec<ast::SelectColumn>, scope: &'b SourceScope<'b>)
+    -> Result<(Vec<Identifier>, Vec<SExpression<'a, DB>>), QueryPlanCompileError>
+    {
+        let mut arbitrary_column_count = 0;
+
+        let mut arbitrary_column_name = || {
+            let s = format!("_{}", arbitrary_column_count);
+            arbitrary_column_count += 1;
+
+            Identifier::new(&s).unwrap()
+        };
+
+        let mut a: Vec<_> = Vec::new();
+
+        for c in result_columns {
+            match c {
+                ast::SelectColumn::AllColumns => {
+                    a.extend(scope.tables().iter().flat_map(|table| {
+                        let source_id = table.source_id;
+
+                        table.out_column_names.iter().enumerate().map(move |(i, name)| {
+                            (name.clone(), SExpression::ColumnField {
+                                source_id: source_id,
+                                column_offset: i as u32
+                            })
+                        })
+                    }));
+                },
+                ast::SelectColumn::Expr { expr, alias } => {
+                    let column_name = if let Some(alias) = alias {
+                        try!(new_identifier(&alias))
+                    } else {
+                        // if the expression is a simple identifier, make that
+                        // the column name. else, assign an arbitrary name.
+                        if let &ast::Expression::Ident(ref n) = &expr {
+                            try!(new_identifier(n))
+                        } else {
+                            arbitrary_column_name()
+                        }
+                    };
+
+                    let e = try!(self.ast_expression_to_sexpression(expr, &scope));
+                    a.push((column_name, e));
+                }
+            }
+        }
+
+        Ok(a.into_iter().unzip())
     }
 
     fn ast_expression_to_sexpression<'b>(&mut self, ast: ast::Expression, scope: &'b SourceScope<'b>)
