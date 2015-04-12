@@ -72,28 +72,20 @@ where <DB as DatabaseInfo>::Table: 'a
     {
         let scope = SourceScope::new(None, Vec::new(), Vec::new());
 
-        let mut source_id: u32 = 0;
-
-        let source_id_fn = || {
-            let old_source_id = source_id;
-            source_id += 1;
-            old_source_id
-        };
-
         let mut compiler = Compiler {
             db: db,
-            new_source_id: source_id_fn
+            next_source_id: 0
         };
 
         compiler.compile_select_recurse(stmt, &scope)
     }
 }
 
-struct Compiler<'a, DB: DatabaseInfo, F>
-where DB: 'a, <DB as DatabaseInfo>::Table: 'a, F: FnMut() -> u32
+struct Compiler<'a, DB: DatabaseInfo>
+where DB: 'a, <DB as DatabaseInfo>::Table: 'a
 {
     db: &'a DB,
-    new_source_id: F
+    next_source_id: u32
 }
 
 struct FromWhere<'a, DB: DatabaseInfo>
@@ -150,11 +142,13 @@ where <DB as DatabaseInfo>::Table: 'a
     }
 }
 
-impl<'a, DB: DatabaseInfo, F> Compiler<'a, DB, F>
-where DB: 'a, <DB as DatabaseInfo>::Table: 'a, F: FnMut() -> u32
+impl<'a, DB: DatabaseInfo> Compiler<'a, DB>
+where DB: 'a, <DB as DatabaseInfo>::Table: 'a
 {
     fn new_source_id(&mut self) -> u32 {
-        (&mut self.new_source_id)()
+        let old_source_id = self.next_source_id;
+        self.next_source_id += 1;
+        old_source_id
     }
 
     fn compile_select_recurse<'b>(&mut self, stmt: ast::SelectStatement, outer_scope: &'b SourceScope<'b>)
