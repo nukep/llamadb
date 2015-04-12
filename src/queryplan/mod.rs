@@ -4,6 +4,7 @@ use identifier::Identifier;
 use sqlsyntax::ast;
 
 use std::fmt;
+use std::collections::HashMap;
 
 mod execute;
 mod sexpression;
@@ -72,20 +73,30 @@ where <DB as DatabaseInfo>::Table: 'a
     {
         let scope = SourceScope::new(None, Vec::new(), Vec::new());
 
-        let mut compiler = Compiler {
+        let mut source_id_to_query_id = HashMap::new();
+        let mut next_source_id = 0;
+        let mut next_query_id = 1;
+
+        let compiler = QueryCompiler {
+            query_id: 0,
             db: db,
-            next_source_id: 0
+            source_id_to_query_id: &mut source_id_to_query_id,
+            next_source_id: &mut next_source_id,
+            next_query_id: &mut next_query_id
         };
 
-        compiler.compile_select_recurse(stmt, &scope)
+        compiler.compile(stmt, &scope)
     }
 }
 
-struct Compiler<'a, DB: DatabaseInfo>
+struct QueryCompiler<'a, 'z, DB: DatabaseInfo>
 where DB: 'a, <DB as DatabaseInfo>::Table: 'a
 {
+    query_id: u32,
     db: &'a DB,
-    next_source_id: u32
+    source_id_to_query_id: &'z mut HashMap<u32, u32>,
+    next_source_id: &'z mut u32,
+    next_query_id: &'z mut u32
 }
 
 struct FromWhere<'a, DB: DatabaseInfo>
@@ -142,16 +153,29 @@ where <DB as DatabaseInfo>::Table: 'a
     }
 }
 
-impl<'a, DB: DatabaseInfo> Compiler<'a, DB>
+impl<'a, 'z, DB: DatabaseInfo> QueryCompiler<'a, 'z, DB>
 where DB: 'a, <DB as DatabaseInfo>::Table: 'a
 {
     fn new_source_id(&mut self) -> u32 {
-        let old_source_id = self.next_source_id;
-        self.next_source_id += 1;
+        let old_source_id = *self.next_source_id;
+
+        assert!(self.source_id_to_query_id.insert(old_source_id, self.query_id).is_none());
+
+        *self.next_source_id += 1;
         old_source_id
     }
 
-    fn compile_select_recurse<'b>(&mut self, stmt: ast::SelectStatement, outer_scope: &'b SourceScope<'b>)
+    fn new_query_id(&mut self) -> u32 {
+        let old_query_id = *self.next_query_id;
+        *self.next_query_id += 1;
+        old_query_id
+    }
+
+    fn get_query_id_from_source_id(&self, source_id: u32) -> u32 {
+        *self.source_id_to_query_id.get(&source_id).unwrap()
+    }
+
+    fn compile<'b>(mut self, stmt: ast::SelectStatement, outer_scope: &'b SourceScope<'b>)
     -> Result<QueryPlan<'a, DB>, QueryPlanCompileError>
     {
         // Unimplemented syntaxes: GROUP BY, HAVING, ORDER BY
@@ -190,7 +214,17 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
         let a: Vec<_> = try!(ast_cross_tables.into_iter().map(|ast_table_or_subquery| {
             match ast_table_or_subquery {
                 ast::TableOrSubquery::Subquery { subquery, alias } => {
-                    let plan = try!(self.compile_select_recurse(*subquery, scope));
+                    let plan = {
+                        let compiler = QueryCompiler {
+                            query_id: self.new_query_id(),
+                            db: self.db,
+                            source_id_to_query_id: self.source_id_to_query_id,
+                            next_source_id: self.next_source_id,
+                            next_query_id: self.next_query_id
+                        };
+
+                        try!(compiler.compile(*subquery, scope))
+                    };
                     let alias_identifier = try!(new_identifier(&alias));
 
                     let source_id = self.new_source_id();
@@ -363,7 +397,15 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
             ast::Expression::Subquery(subquery) => {
                 let source_id = self.new_source_id();
 
-                let plan = try!(self.compile_select_recurse(*subquery, scope));
+                let compiler = QueryCompiler {
+                    query_id: self.new_query_id(),
+                    db: self.db,
+                    source_id_to_query_id: self.source_id_to_query_id,
+                    next_source_id: self.next_source_id,
+                    next_query_id: self.next_query_id
+                };
+
+                let plan = try!(compiler.compile(*subquery, scope));
 
                 Ok(SExpression::Map {
                     source_id: source_id,
