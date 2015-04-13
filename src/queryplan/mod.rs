@@ -233,9 +233,8 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
     fn compile<'b>(mut self, stmt: ast::SelectStatement, outer_scope: &'b SourceScope<'b>, groups_info: &mut GroupsInfo)
     -> Result<QueryPlan<'a, DB>, QueryPlanCompileError>
     {
-        // Unimplemented syntaxes: GROUP BY, HAVING, ORDER BY
+        // Unimplemented syntaxes: HAVING, ORDER BY
         // TODO - implement them!
-        if !stmt.group_by.is_empty() { unimplemented!() }
         if stmt.having.is_some() { unimplemented!() }
         if !stmt.order_by.is_empty() { unimplemented!() }
 
@@ -244,6 +243,17 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
         // contain ON (conditional) expressions.
 
         let (new_scope, from_where) = try!(self.from_where(stmt.from, stmt.where_expr, outer_scope, groups_info));
+
+        let mut group_by_values = if !stmt.group_by.is_empty() {
+            let query_id = self.query_id;
+            self.new_aggregated_source_id(query_id);
+
+            try!(stmt.group_by.into_iter().map(|expr| {
+                self.ast_expression_to_sexpression(expr, &new_scope, groups_info)
+            }).collect())
+        } else {
+            vec![]
+        };
 
         let (column_names, select_exprs) = try!(self.select(stmt.result_columns, &new_scope, groups_info));
 
@@ -282,12 +292,16 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
 
             let mut yield_out_fn = SExpression::Yield { fields: select_exprs };
 
+            for expr in &mut group_by_values {
+                remap_columns_in_sexpression(expr, &mapping);
+            }
+
             remap_columns_in_sexpression(&mut yield_out_fn, &mapping);
 
             SExpression::TempGroupBy {
                 source_id: source_id,
                 yield_in_fn: Box::new(yield_in_fn),
-                group_by_values: vec![],
+                group_by_values: group_by_values,
                 yield_out_fn: Box::new(yield_out_fn)
             }
         } else {
