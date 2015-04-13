@@ -3,6 +3,9 @@ use databaseinfo::DatabaseInfo;
 use databasestorage::{DatabaseStorage, Group};
 use super::sexpression::{BinaryOp, SExpression};
 
+mod aggregate;
+use self::aggregate::*;
+
 mod groupbuckets;
 use self::groupbuckets::GroupBuckets;
 
@@ -196,8 +199,27 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
                     _ => unimplemented!()
                 })
             },
-            &SExpression::AggregateOp { ref op, source_id, ref value } => {
-                unimplemented!()
+            &SExpression::AggregateOp { op, source_id, ref value } => {
+                let group = source.and_then(|s| s.find_group_from_source_id(source_id));
+                match group {
+                    Some(group) => {
+                        let mut op_functor = get_aggregate_function(op);
+
+                        for row in group.iter() {
+                            let new_source = Source {
+                                parent: source,
+                                source_id: source_id,
+                                source_type: SourceType::Row(&row)
+                            };
+
+                            let v = try!(self.resolve_value(value, Some(&new_source)));
+                            op_functor.feed(v);
+                        }
+
+                        Ok(op_functor.finish())
+                    },
+                    None => Err(())
+                }
             },
             &SExpression::Map { source_id, ref yield_in_fn, ref yield_out_fn } => {
                 trace!("resolve_value; map {}", source_id);
