@@ -237,9 +237,8 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
     fn compile<'b>(mut self, stmt: ast::SelectStatement, outer_scope: &'b SourceScope<'b>, groups_info: &mut GroupsInfo)
     -> Result<QueryPlan<'a, DB>, QueryPlanCompileError>
     {
-        // Unimplemented syntaxes: HAVING, ORDER BY
+        // Unimplemented syntaxes: ORDER BY
         // TODO - implement them!
-        if stmt.having.is_some() { unimplemented!() }
         if !stmt.order_by.is_empty() { unimplemented!() }
 
         // FROM and WHERE are compiled together.
@@ -248,15 +247,23 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
 
         let (new_scope, from_where) = try!(self.from_where(stmt.from, stmt.where_expr, outer_scope, groups_info));
 
-        let mut group_by_values = if !stmt.group_by.is_empty() {
+        let (mut group_by_values, having_predicate) = if !stmt.group_by.is_empty() {
             let query_id = self.query_id;
             self.new_aggregated_source_id(query_id);
 
-            try!(stmt.group_by.into_iter().map(|expr| {
+            let group_by_values = try!(stmt.group_by.into_iter().map(|expr| {
                 self.ast_expression_to_sexpression(expr, &new_scope, groups_info)
-            }).collect())
+            }).collect());
+
+            let having_predicate = if let Some(having) = stmt.having {
+                Some(try!(self.ast_expression_to_sexpression(having, &new_scope, groups_info)))
+            } else {
+                None
+            };
+
+            (group_by_values, having_predicate)
         } else {
-            vec![]
+            (vec![], None)
         };
 
         let (column_names, select_exprs) = try!(self.select(stmt.result_columns, &new_scope, groups_info));
@@ -298,6 +305,13 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
 
             for expr in &mut group_by_values {
                 remap_columns_in_sexpression(expr, &mapping);
+            }
+
+            if let Some(having_predicate) = having_predicate {
+                yield_out_fn = SExpression::If {
+                    predicate: Box::new(having_predicate),
+                    yield_fn: Box::new(yield_out_fn)
+                }
             }
 
             remap_columns_in_sexpression(&mut yield_out_fn, &mapping);
