@@ -58,9 +58,15 @@ impl<'a, DB: DatabaseInfo> SExpression<'a, DB>
 where <DB as DatabaseInfo>::Table: 'a
 {
     fn format(&self, f: &mut fmt::Formatter, indent: usize) -> Result<(), fmt::Error> {
-        for _ in 0..indent {
-            try!(write!(f, "  "));
+        macro_rules! write_indent {
+            ($i:expr) => (
+                for _ in 0..$i {
+                    try!(write!(f, "  "));
+                }
+            )
         }
+
+        write_indent!(indent);
 
         match self {
             &SExpression::Scan { table, source_id, ref yield_fn } => {
@@ -79,11 +85,13 @@ where <DB as DatabaseInfo>::Table: 'a
                 try!(writeln!(f, "(temp-group-by :source_id {}", source_id));
                 try!(yield_in_fn.format(f, indent + 1));
                 try!(writeln!(f, ""));
+                write_indent!(indent+1);
                 try!(writeln!(f, "(group-by-values "));
                 for group_by_value in group_by_values {
-                    try!(group_by_value.format(f, indent + 1));
+                    try!(group_by_value.format(f, indent + 2));
                     try!(writeln!(f, ""));
                 }
+                write_indent!(indent+1);
                 try!(writeln!(f, ")"));
                 try!(yield_out_fn.format(f, indent + 1));
                 write!(f, ")")
