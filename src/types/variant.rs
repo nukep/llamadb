@@ -55,6 +55,32 @@ impl ColumnValueOps for Variant {
         }
     }
 
+    fn from_f64(value: f64) -> Variant {
+        Variant::Float(F64NoNaN::new(value).unwrap())
+    }
+
+    fn to_f64(self) -> Result<f64, ()> {
+        let num = self.cast(DbType::F64);
+        if let Some(Variant::Float(float)) = num {
+            Ok(*float)
+        } else {
+            Err(())
+        }
+    }
+
+    fn from_u64(value: u64) -> Variant {
+        Variant::UnsignedInteger(value)
+    }
+
+    fn to_u64(self) -> Result<u64, ()> {
+        let num = self.cast(DbType::Integer { signed: false, bytes: 8 });
+        if let Some(Variant::UnsignedInteger(i)) = num {
+            Ok(i)
+        } else {
+            Err(())
+        }
+    }
+
     fn from_bytes(dbtype: DbType, bytes: Cow<[u8]>) -> Result<Variant, ()> {
         match dbtype {
             DbType::Null => Ok(Variant::Null),
