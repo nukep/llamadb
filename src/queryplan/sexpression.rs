@@ -89,23 +89,20 @@ where <DB as DatabaseInfo>::Table: 'a
                 try!(yield_in_fn.format(f, indent + 1));
                 try!(writeln!(f, ""));
                 write_indent!(indent+1);
-                try!(writeln!(f, "(group-by-values "));
+                try!(write!(f, "(group-by-values"));
                 for group_by_value in group_by_values {
-                    try!(group_by_value.format(f, indent + 2));
                     try!(writeln!(f, ""));
+                    try!(group_by_value.format(f, indent + 2));
                 }
-                write_indent!(indent+1);
                 try!(writeln!(f, ")"));
                 try!(yield_out_fn.format(f, indent + 1));
                 write!(f, ")")
             },
             &SExpression::Yield { ref fields } => {
-                try!(writeln!(f, "(yield "));
-                for (i, field) in fields.iter().enumerate() {
+                try!(write!(f, "(yield"));
+                for field in fields {
+                    try!(writeln!(f, ""));
                     try!(field.format(f, indent + 1));
-                    if i != fields.len() - 1 {
-                        try!(writeln!(f, ""));
-                    }
                 }
                 write!(f, ")")
             },
