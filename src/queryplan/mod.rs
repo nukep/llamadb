@@ -564,7 +564,11 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
 
                 match &ident as &str {
                     "count" => aggregate!(AggregateOp::Count),
+                    "first" => aggregate!(AggregateOp::First),
                     "avg" => aggregate!(AggregateOp::Avg),
+                    "sum" => aggregate!(AggregateOp::Sum),
+                    "min" => aggregate!(AggregateOp::Min),
+                    "max" => aggregate!(AggregateOp::Max),
                     _ => Err(QueryPlanCompileError::UnknownFunctionName(ident))
                 }
             },

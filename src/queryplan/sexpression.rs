@@ -180,7 +180,10 @@ impl BinaryOp {
 pub enum AggregateOp {
     Count,
     First,
-    Avg
+    Avg,
+    Sum,
+    Min,
+    Max
 }
 
 impl AggregateOp {
@@ -190,7 +193,10 @@ impl AggregateOp {
         match self {
             &Count => "count",
             &First => "first",
-            &Avg => "avg"
+            &Avg => "avg",
+            &Sum => "sum",
+            &Min => "min",
+            &Max => "max"
         }
     }
 }
