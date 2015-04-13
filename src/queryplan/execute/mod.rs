@@ -183,7 +183,21 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
                 let row = source.and_then(|s| s.find_row_from_source_id(source_id));
                 match row {
                     Some(row) => Ok(row[column_offset as usize].clone()),
-                    None => Err(())
+                    None => {
+                        // the source might actually be a group.
+                        // in this case, any arbitrary row from the group is valid to yield.
+                        match source.and_then(|s| s.find_group_from_source_id(source_id)) {
+                            Some(group) => {
+                                match group.get_any_row() {
+                                    Some(row) => {
+                                        Ok(row[column_offset as usize].clone())
+                                    },
+                                    None => Ok(ColumnValueOps::null())
+                                }
+                            },
+                            None => Err(())
+                        }
+                    }
                 }
             },
             &SExpression::BinaryOp { op, ref lhs, ref rhs } => {

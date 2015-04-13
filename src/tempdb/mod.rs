@@ -48,6 +48,10 @@ struct ScanGroup<'a> {
 impl<'a> Group for ScanGroup<'a> {
     type ColumnValue = Variant;
 
+    fn get_any_row<'b>(&'b self) -> Option<Cow<'b, [Variant]>> {
+        self.iter().nth(0)
+    }
+
     fn iter<'b>(&'b self) -> Box<Iterator<Item=Cow<'b, [Variant]>> + 'b> {
         let table = self.table;
         let columns: &'b [self::table::Column] = &table.columns;
