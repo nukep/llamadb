@@ -21,7 +21,8 @@ pub enum QueryPlanCompileError {
     BadStringLiteral(String),
     BadNumberLiteral(String),
     UnknownFunctionName(Identifier),
-    AggregateFunctionRequiresOneArgument
+    AggregateFunctionRequiresOneArgument,
+    AggregateFunctionHasNoQueryToAggregate
 }
 
 impl fmt::Display for QueryPlanCompileError {
@@ -50,6 +51,9 @@ impl fmt::Display for QueryPlanCompileError {
             &AggregateFunctionRequiresOneArgument => {
                 write!(f, "aggregate function requires exactly one argument")
             },
+            &AggregateFunctionHasNoQueryToAggregate => {
+                write!(f, "aggregate function contains no query to aggregate")
+            },
         }
     }
 }
@@ -74,23 +78,33 @@ where <DB as DatabaseInfo>::Table: 'a
         let scope = SourceScope::new(None, Vec::new(), Vec::new());
 
         let mut source_id_to_query_id = HashMap::new();
+        let mut query_to_aggregated_source_id = HashMap::new();
         let mut next_source_id = 0;
         let mut next_query_id = 1;
 
         let mut groups_info = GroupsInfo::new();
 
-        let compiler = QueryCompiler {
-            query_id: 0,
-            db: db,
-            source_id_to_query_id: &mut source_id_to_query_id,
-            next_source_id: &mut next_source_id,
-            next_query_id: &mut next_query_id
+        let plan = {
+            let compiler = QueryCompiler {
+                query_id: 0,
+                db: db,
+                source_id_to_query_id: &mut source_id_to_query_id,
+                query_to_aggregated_source_id: &mut query_to_aggregated_source_id,
+                next_source_id: &mut next_source_id,
+                next_query_id: &mut next_query_id
+            };
+
+            compiler.compile(stmt, &scope, &mut groups_info)
         };
 
-        compiler.compile(stmt, &scope, &mut groups_info)
+        debug!("source id to query id; {:?}", source_id_to_query_id);
+        debug!("query to aggregated source id; {:?}", query_to_aggregated_source_id);
+
+        plan
     }
 }
 
+#[derive(Debug)]
 struct GroupsInfo {
     innermost_nonaggregated_query: Option<u32>
 }
@@ -121,6 +135,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
     query_id: u32,
     db: &'a DB,
     source_id_to_query_id: &'z mut HashMap<u32, u32>,
+    query_to_aggregated_source_id: &'z mut HashMap<u32, u32>,
     next_source_id: &'z mut u32,
     next_query_id: &'z mut u32
 }
@@ -197,6 +212,20 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
         old_query_id
     }
 
+    fn new_aggregated_source_id(&mut self, aggregated_query_id: u32) -> u32 {
+        if let Some(&source_id) = self.query_to_aggregated_source_id.get(&aggregated_query_id) {
+            source_id
+        } else {
+            let old_source_id = *self.next_source_id;
+
+            assert!(self.source_id_to_query_id.insert(old_source_id, aggregated_query_id).is_none());
+            assert!(self.query_to_aggregated_source_id.insert(aggregated_query_id, old_source_id).is_none());
+
+            *self.next_source_id += 1;
+            old_source_id
+        }
+    }
+
     fn get_query_id_from_source_id(&self, source_id: u32) -> u32 {
         *self.source_id_to_query_id.get(&source_id).unwrap()
     }
@@ -218,7 +247,52 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
 
         let (column_names, select_exprs) = try!(self.select(stmt.result_columns, &new_scope, groups_info));
 
-        let expr = from_where.evaluate(SExpression::Yield { fields: select_exprs });
+        let grouped_source_id = self.query_to_aggregated_source_id.get(&self.query_id).cloned();
+
+        let expr = if let Some(source_id) = grouped_source_id {
+            let yield_every_column = SExpression::Yield {
+                fields: new_scope.tables().iter().flat_map(|table| {
+                    let source_id = table.source_id;
+
+                    (0..table.out_column_names.len() as u32).map(move |column_offset| {
+                        SExpression::ColumnField {
+                            source_id: source_id,
+                            column_offset: column_offset
+                        }
+                    })
+                }).collect()
+            };
+
+            let yield_in_fn = from_where.evaluate(yield_every_column);
+
+            let mapping = {
+                let mut c = 0;
+
+                new_scope.tables().iter().map(|table| {
+                    let m = Mapping {
+                        source_id: source_id,
+                        column_offset: c
+                    };
+
+                    c += table.out_column_names.len() as u32;
+
+                    (table.source_id, m)
+                }).collect()
+            };
+
+            let mut yield_out_fn = SExpression::Yield { fields: select_exprs };
+
+            remap_columns_in_sexpression(&mut yield_out_fn, &mapping);
+
+            SExpression::TempGroupBy {
+                source_id: source_id,
+                yield_in_fn: Box::new(yield_in_fn),
+                group_by_values: vec![],
+                yield_out_fn: Box::new(yield_out_fn)
+            }
+        } else {
+            from_where.evaluate(SExpression::Yield { fields: select_exprs })
+        };
 
         Ok(QueryPlan {
             expr: expr,
@@ -245,6 +319,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
                             query_id: self.new_query_id(),
                             db: self.db,
                             source_id_to_query_id: self.source_id_to_query_id,
+                            query_to_aggregated_source_id: self.query_to_aggregated_source_id,
                             next_source_id: self.next_source_id,
                             next_query_id: self.next_query_id
                         };
@@ -332,6 +407,8 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
         for c in result_columns {
             match c {
                 ast::SelectColumn::AllColumns => {
+                    groups_info.add_query_id(self.query_id);
+
                     a.extend(scope.tables().iter().flat_map(|table| {
                         let source_id = table.source_id;
 
@@ -432,6 +509,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
                     query_id: self.new_query_id(),
                     db: self.db,
                     source_id_to_query_id: self.source_id_to_query_id,
+                    query_to_aggregated_source_id: self.query_to_aggregated_source_id,
                     next_source_id: self.next_source_id,
                     next_query_id: self.next_query_id
                 };
@@ -461,15 +539,25 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
 
                             let value = try!(self.ast_expression_to_sexpression(arg, scope, &mut g));
 
-                            let new_groups = groups_info.queries_used_as_groups.union(&g.queries_used_as_groups).cloned().collect();
-                            groups_info.queries_used_as_groups = new_groups;
+                            if let Some(aggregated_query) = g.innermost_nonaggregated_query {
+                                if aggregated_query <= self.query_id {
+                                    // aggregated query is outside of the expression
 
-                            let source_id = unimplemented!();
-                            Ok(SExpression::AggregateOp {
-                                op: $op,
-                                source_id: source_id,
-                                value: Box::new(value)
-                            })
+                                    let source_id = self.new_aggregated_source_id(aggregated_query);
+
+                                    Ok(SExpression::AggregateOp {
+                                        op: $op,
+                                        source_id: source_id,
+                                        value: Box::new(value)
+                                    })
+                                } else {
+                                    // cannot aggregate over query defined inside the expression
+                                    // TODO: investigate. this might actually be impossible.
+                                    Err(QueryPlanCompileError::AggregateFunctionHasNoQueryToAggregate)
+                                }
+                            } else {
+                                Err(QueryPlanCompileError::AggregateFunctionHasNoQueryToAggregate)
+                            }
                         }
                     )
                 }
@@ -482,6 +570,74 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
             },
             e => panic!("unimplemented: {:?}", e)
         }
+    }
+}
+
+#[derive(Debug)]
+struct Mapping {
+    source_id: u32,
+    column_offset: u32
+}
+
+fn remap_columns_in_sexpression<'a, DB>(expr: &mut SExpression<'a, DB>, mapping: &HashMap<u32, Mapping>)
+where DB: DatabaseInfo + 'a, <DB as DatabaseInfo>::Table: 'a
+{
+    match expr {
+        &mut SExpression::ColumnField { ref mut source_id, ref mut column_offset } => {
+            if let Some(m) = mapping.get(source_id) {
+                *source_id = m.source_id;
+                *column_offset += m.column_offset;
+            }
+        },
+        _ => {
+            iter_mut_expressions_in_expression(expr, |e| remap_columns_in_sexpression(e, mapping));
+        }
+    }
+}
+
+fn iter_mut_expressions_in_expression<'a, DB, F>(expr: &mut SExpression<'a, DB>, mut cb: F)
+where DB: DatabaseInfo + 'a, <DB as DatabaseInfo>::Table: 'a, F: FnMut(&mut SExpression<'a, DB>)
+{
+    match expr {
+        &mut SExpression::Scan { ref mut yield_fn, .. } => {
+            cb(yield_fn);
+        },
+        &mut SExpression::Map { ref mut yield_in_fn, ref mut yield_out_fn, .. } => {
+            cb(yield_in_fn);
+            cb(yield_out_fn);
+        },
+        &mut SExpression::TempGroupBy { ref mut yield_in_fn, ref mut group_by_values, ref mut yield_out_fn, .. } => {
+            cb(yield_in_fn);
+            for v in group_by_values {
+                cb(v);
+            }
+            cb(yield_out_fn);
+        },
+        &mut SExpression::Yield { ref mut fields } => {
+            for v in fields {
+                cb(v);
+            }
+        },
+        &mut SExpression::If {
+            ref mut predicate,
+            ref mut yield_fn
+        } => {
+            cb(predicate);
+            cb(yield_fn);
+        },
+        &mut SExpression::BinaryOp {
+            ref mut lhs,
+            ref mut rhs, ..
+        } => {
+            cb(lhs);
+            cb(rhs);
+        },
+        &mut SExpression::AggregateOp {
+            ref mut value, ..
+        } => {
+            cb(value);
+        },
+        _ => ()
     }
 }
 
