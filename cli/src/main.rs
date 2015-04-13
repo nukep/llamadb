@@ -3,6 +3,8 @@
 #[macro_use]
 extern crate log;
 
+extern crate env_logger;
+
 extern crate linenoise;
 extern crate llamadb;
 
@@ -12,6 +14,8 @@ mod prettyselect;
 use prettyselect::pretty_select;
 
 fn main() {
+    env_logger::init().unwrap();
+
     let mut lexer = llamadb::sqlsyntax::lexer::Lexer::new();
 
     let mut db = llamadb::tempdb::TempDb::new();
