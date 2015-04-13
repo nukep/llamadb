@@ -22,7 +22,8 @@ pub enum QueryPlanCompileError {
     BadNumberLiteral(String),
     UnknownFunctionName(Identifier),
     AggregateFunctionRequiresOneArgument,
-    AggregateFunctionHasNoQueryToAggregate
+    AggregateFunctionHasNoQueryToAggregate,
+    AggregateAllMustBeCount(Identifier)
 }
 
 impl fmt::Display for QueryPlanCompileError {
@@ -53,6 +54,9 @@ impl fmt::Display for QueryPlanCompileError {
             },
             &AggregateFunctionHasNoQueryToAggregate => {
                 write!(f, "aggregate function contains no query to aggregate")
+            },
+            &AggregateAllMustBeCount(ref name) => {
+                write!(f, "aggregate (*) function must be `count` (found {})", name)
             },
         }
     }
@@ -584,6 +588,21 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
                     "min" => aggregate!(AggregateOp::Min),
                     "max" => aggregate!(AggregateOp::Max),
                     _ => Err(QueryPlanCompileError::UnknownFunctionName(ident))
+                }
+            },
+            ast::Expression::FunctionCallAggregateAll { name } => {
+                let ident = try!(new_identifier(&name));
+
+                match &ident as &str {
+                    "count" => {
+                        let query_id = self.query_id;
+                        let source_id = self.new_aggregated_source_id(query_id);
+
+                        Ok(SExpression::CountAll {
+                            source_id: source_id
+                        })
+                    }
+                    _ => Err(QueryPlanCompileError::AggregateAllMustBeCount(ident))
                 }
             },
             e => panic!("unimplemented: {:?}", e)

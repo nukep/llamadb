@@ -52,6 +52,10 @@ impl<'a> Group for ScanGroup<'a> {
         self.iter().nth(0)
     }
 
+    fn count(&self) -> u64 {
+        self.table.rowid_index.len() as u64
+    }
+
     fn iter<'b>(&'b self) -> Box<Iterator<Item=Cow<'b, [Variant]>> + 'b> {
         let table = self.table;
         let columns: &'b [self::table::Column] = &table.columns;

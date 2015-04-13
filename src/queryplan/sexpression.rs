@@ -43,6 +43,9 @@ where <DB as DatabaseInfo>::Table: 'a
         source_id: u32,
         value: Box<SExpression<'a, DB>>
     },
+    CountAll {
+        source_id: u32
+    },
     Value(<DB as DatabaseInfo>::ColumnValue)
 }
 
@@ -127,6 +130,9 @@ where <DB as DatabaseInfo>::Table: 'a
                 try!(writeln!(f, "({} :source_id {} ", op.name(), source_id));
                 try!(value.format(f, indent + 1));
                 write!(f, ")")
+            },
+            &SExpression::CountAll { source_id } => {
+                write!(f, "(count-all :source_id {})", source_id)
             },
             &SExpression::Value(ref v) => {
                 write!(f, "{}", v)

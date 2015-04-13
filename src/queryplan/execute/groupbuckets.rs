@@ -67,6 +67,10 @@ impl<ColumnValue: Clone + Eq + Hash + 'static> Group for GroupBucket<ColumnValue
         self.rows.iter().nth(0).map(|r| r.into_cow())
     }
 
+    fn count(&self) -> u64 {
+        self.rows.len() as u64
+    }
+
     fn iter<'a>(&'a self) -> Box<Iterator<Item=Cow<'a, [ColumnValue]>> + 'a> {
         Box::new(self.rows.iter().map(|row| {
             use std::borrow::IntoCow;

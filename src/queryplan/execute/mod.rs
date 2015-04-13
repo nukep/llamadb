@@ -166,6 +166,7 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
             &SExpression::ColumnField { .. } |
             &SExpression::BinaryOp { .. } |
             &SExpression::AggregateOp { .. } |
+            &SExpression::CountAll { .. } |
             &SExpression::Value(..) => {
                 // these expressions cannot contain yieldable rows.
                 Err(())
@@ -235,6 +236,15 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
                         }
 
                         Ok(op_functor.finish())
+                    },
+                    None => Err(())
+                }
+            },
+            &SExpression::CountAll { source_id } => {
+                match source.and_then(|s| s.find_group_from_source_id(source_id)) {
+                    Some(group) => {
+                        let count = group.count();
+                        Ok(ColumnValueOps::from_u64(count))
                     },
                     None => Err(())
                 }
