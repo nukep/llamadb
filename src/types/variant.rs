@@ -225,6 +225,27 @@ impl ColumnValueOps for Variant {
                     Err(()) => None
                 }
             },
+            (Variant::Float(float), DbType::Integer { signed, bytes }) => {
+                // truncates
+                if signed {
+                    Some(Variant::SignedInteger(*float as i64))
+                } else {
+                    Some(Variant::UnsignedInteger(*float as u64))
+                }
+            },
+            // TODO: overflow checks!
+            (Variant::UnsignedInteger(integer), DbType::F64) => {
+                Some(Variant::Float(F64NoNaN::new(integer as f64).unwrap()))
+            },
+            (Variant::SignedInteger(integer), DbType::F64) => {
+                Some(Variant::Float(F64NoNaN::new(integer as f64).unwrap()))
+            },
+            (Variant::UnsignedInteger(integer), DbType::Integer { signed: true, .. }) => {
+                Some(Variant::SignedInteger(integer as i64))
+            },
+            (Variant::SignedInteger(integer), DbType::Integer { signed: false, .. }) => {
+                Some(Variant::UnsignedInteger(integer as u64))
+            },
             _ => None
         }
     }
