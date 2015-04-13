@@ -296,4 +296,95 @@ impl ColumnValueOps for Variant {
             (e, _) => e.clone()
         }
     }
+
+    fn add(&self, rhs: &Self) -> Self {
+        // TODO: treat overflow!
+        let dbtype = self.get_dbtype();
+        if let Some(r) = rhs.clone().cast(dbtype) {
+            match (self, r) {
+                (&Variant::UnsignedInteger(l), Variant::UnsignedInteger(r)) => {
+                    Variant::UnsignedInteger(l + r)
+                },
+                (&Variant::SignedInteger(l), Variant::SignedInteger(r)) => {
+                    Variant::SignedInteger(l + r)
+                },
+                (&Variant::Float(l), Variant::Float(r)) => {
+                    Variant::Float(F64NoNaN::new(*l + *r).unwrap())
+                },
+                _ => self.clone()
+            }
+        } else {
+            self.clone()
+        }
+    }
+
+    fn sub(&self, rhs: &Self) -> Self {
+        // TODO: treat overflow!
+        let dbtype = self.get_dbtype();
+        if let Some(r) = rhs.clone().cast(dbtype) {
+            match (self, r) {
+                (&Variant::UnsignedInteger(l), Variant::UnsignedInteger(r)) => {
+                    Variant::UnsignedInteger(l - r)
+                },
+                (&Variant::SignedInteger(l), Variant::SignedInteger(r)) => {
+                    Variant::SignedInteger(l - r)
+                },
+                (&Variant::Float(l), Variant::Float(r)) => {
+                    Variant::Float(F64NoNaN::new(*l - *r).unwrap())
+                },
+                _ => self.clone()
+            }
+        } else {
+            self.clone()
+        }
+    }
+
+    fn mul(&self, rhs: &Self) -> Self {
+        // TODO: treat overflow!
+        let dbtype = self.get_dbtype();
+        if let Some(r) = rhs.clone().cast(dbtype) {
+            match (self, r) {
+                (&Variant::UnsignedInteger(l), Variant::UnsignedInteger(r)) => {
+                    Variant::UnsignedInteger(l * r)
+                },
+                (&Variant::SignedInteger(l), Variant::SignedInteger(r)) => {
+                    Variant::SignedInteger(l * r)
+                },
+                (&Variant::Float(l), Variant::Float(r)) => {
+                    Variant::Float(F64NoNaN::new(*l * *r).unwrap())
+                },
+                _ => self.clone()
+            }
+        } else {
+            self.clone()
+        }
+    }
+
+    fn div(&self, rhs: &Self) -> Self {
+        // TODO: treat overflow!
+        let dbtype = self.get_dbtype();
+        if let Some(r) = rhs.clone().cast(dbtype) {
+            match (self, r) {
+                (&Variant::UnsignedInteger(l), Variant::UnsignedInteger(0)) => Variant::Null,
+                (&Variant::SignedInteger(l), Variant::SignedInteger(0)) => Variant::Null,
+
+                (&Variant::UnsignedInteger(l), Variant::UnsignedInteger(r)) => {
+                    Variant::UnsignedInteger(l / r)
+                },
+                (&Variant::SignedInteger(l), Variant::SignedInteger(r)) => {
+                    Variant::SignedInteger(l / r)
+                },
+                (&Variant::Float(l), Variant::Float(r)) => {
+                    if r == F64NoNaN::new(0.0).unwrap() {
+                        Variant::Null
+                    } else {
+                        Variant::Float(F64NoNaN::new(*l / *r).unwrap())
+                    }
+                },
+                _ => self.clone()
+            }
+        } else {
+            self.clone()
+        }
+    }
 }

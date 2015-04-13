@@ -32,6 +32,10 @@ pub trait ColumnValueOps: Sized {
     fn concat(&self, rhs: &Self) -> Self;
     fn equals(&self, rhs: &Self) -> Self;
     fn not_equals(&self, rhs: &Self) -> Self;
+    fn add(&self, rhs: &Self) -> Self;
+    fn sub(&self, rhs: &Self) -> Self;
+    fn mul(&self, rhs: &Self) -> Self;
+    fn div(&self, rhs: &Self) -> Self;
 
     fn is_null(&self) -> bool { self.to_3vl() == 0 }
 

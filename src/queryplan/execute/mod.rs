@@ -196,6 +196,10 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
                     BinaryOp::And => l.and(&r),
                     BinaryOp::Or => l.or(&r),
                     BinaryOp::Concatenate => l.concat(&r),
+                    BinaryOp::Add => l.add(&r),
+                    BinaryOp::Subtract => l.sub(&r),
+                    BinaryOp::Multiply => l.mul(&r),
+                    BinaryOp::Divide => l.div(&r),
                     _ => unimplemented!()
                 })
             },
