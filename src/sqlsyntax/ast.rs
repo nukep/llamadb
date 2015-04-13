@@ -16,6 +16,7 @@ pub enum BinaryOp {
     Add,
     Subtract,
     Multiply,
+    Divide,
     BitAnd,
     BitOr,
     Concatenate,

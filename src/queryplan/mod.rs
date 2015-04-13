@@ -658,6 +658,7 @@ fn ast_binaryop_to_sexpression_binaryop(ast: ast::BinaryOp) -> BinaryOp {
         ast::BinaryOp::Add => BinaryOp::Add,
         ast::BinaryOp::Subtract => BinaryOp::Subtract,
         ast::BinaryOp::Multiply => BinaryOp::Multiply,
+        ast::BinaryOp::Divide => BinaryOp::Divide,
         ast::BinaryOp::BitAnd => BinaryOp::BitAnd,
         ast::BinaryOp::BitOr => BinaryOp::BitOr,
         ast::BinaryOp::Concatenate => BinaryOp::Concatenate,

@@ -163,6 +163,7 @@ impl Rule for BinaryOp {
             &Token::Plus => Ok(BinaryOp::Add),
             &Token::Minus => Ok(BinaryOp::Subtract),
             &Token::Asterisk => Ok(BinaryOp::Multiply),
+            &Token::ForwardSlash => Ok(BinaryOp::Divide),
             &Token::Ampersand => Ok(BinaryOp::BitAnd),
             &Token::Pipe => Ok(BinaryOp::BitOr),
             &Token::DoublePipe => Ok(BinaryOp::Concatenate),
@@ -187,7 +188,7 @@ impl BinaryOp {
         use super::ast::BinaryOp::*;
 
         match self {
-            &Multiply => 5,
+            &Multiply | &Divide => 5,
             &Add | &Subtract | &BitAnd | &BitOr | &Concatenate => 4,
             // comparison
             &Equal | &NotEqual | &LessThan | &LessThanOrEqual | &GreaterThan | &GreaterThanOrEqual => 3,
