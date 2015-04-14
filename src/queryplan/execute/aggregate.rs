@@ -1,4 +1,4 @@
-use columnvalueops::ColumnValueOps;
+use columnvalueops::{ColumnValueOps, ColumnValueOpsExt};
 use super::super::sexpression::AggregateOp;
 
 pub trait AggregateFunction<ColumnValue> {
@@ -39,7 +39,7 @@ impl<ColumnValue: ColumnValueOps> AggregateFunction<ColumnValue> for First<Colum
 
         match mem::replace(&mut self.only_value, None) {
             Some(value) => value,
-            None => ColumnValueOps::null()
+            None => ColumnValueOpsExt::null()
         }
     }
 }
@@ -59,7 +59,7 @@ impl<ColumnValue: ColumnValueOps> AggregateFunction<ColumnValue> for Avg {
 
     fn finish(&mut self) -> ColumnValue {
         if self.count == 0 {
-            ColumnValueOps::null()
+            ColumnValueOpsExt::null()
         } else {
             ColumnValueOps::from_f64(self.sum / (self.count as f64))
         }
@@ -81,7 +81,7 @@ impl<ColumnValue: ColumnValueOps> AggregateFunction<ColumnValue> for Sum {
 
     fn finish(&mut self) -> ColumnValue {
         if self.count == 0 {
-            ColumnValueOps::null()
+            ColumnValueOpsExt::null()
         } else {
             ColumnValueOps::from_f64(self.sum)
         }

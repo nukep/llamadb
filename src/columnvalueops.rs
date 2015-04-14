@@ -15,9 +15,6 @@ pub trait ColumnValueOps: Sized {
     fn to_bytes(self, dbtype: DbType) -> Result<Box<[u8]>, ()>;
     fn get_dbtype(&self) -> DbType;
 
-    /// Used for predicate logic (such as the entire WHERE expression).
-    fn tests_true(&self) -> bool;
-
     /// Must return one of the following:
     ///
     /// * -1 for false
@@ -37,7 +34,9 @@ pub trait ColumnValueOps: Sized {
     fn sub(&self, rhs: &Self) -> Self;
     fn mul(&self, rhs: &Self) -> Self;
     fn div(&self, rhs: &Self) -> Self;
+}
 
+pub trait ColumnValueOpsExt: ColumnValueOps {
     fn null() -> Self { ColumnValueOps::from_3vl(0) }
 
     fn equals(&self, rhs: &Self) -> Self {
@@ -90,6 +89,8 @@ pub trait ColumnValueOps: Sized {
 
     fn is_null(&self) -> bool { self.to_3vl() == 0 }
 
+    fn tests_true(&self) -> bool { self.to_3vl() == 1 }
+
     fn not(&self) -> Self {
         ColumnValueOps::from_3vl(-self.to_3vl())
     }
@@ -106,3 +107,5 @@ pub trait ColumnValueOps: Sized {
         ColumnValueOps::from_3vl(if l > r { l } else { r })
     }
 }
+
+impl<T: ColumnValueOps> ColumnValueOpsExt for T { }

@@ -1,4 +1,4 @@
-use columnvalueops::ColumnValueOps;
+use columnvalueops::{ColumnValueOps, ColumnValueOpsExt};
 use databaseinfo::DatabaseInfo;
 use databasestorage::{DatabaseStorage, Group};
 use super::sexpression::{BinaryOp, SExpression};
@@ -193,7 +193,7 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
                                     Some(row) => {
                                         Ok(row[column_offset as usize].clone())
                                     },
-                                    None => Ok(ColumnValueOps::null())
+                                    None => Ok(ColumnValueOpsExt::null())
                                 }
                             },
                             None => Err(())

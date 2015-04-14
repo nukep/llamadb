@@ -1,4 +1,4 @@
-use columnvalueops::ColumnValueOps;
+use columnvalueops::{ColumnValueOps, ColumnValueOpsExt};
 use databaseinfo::{DatabaseInfo, TableInfo};
 use identifier::Identifier;
 use sqlsyntax::ast;
@@ -535,7 +535,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
                 }
             },
             ast::Expression::Null => {
-                Ok(SExpression::Value(ColumnValueOps::null()))
+                Ok(SExpression::Value(ColumnValueOpsExt::null()))
             },
             ast::Expression::Subquery(subquery) => {
                 let source_id = self.new_source_id();

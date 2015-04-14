@@ -168,21 +168,16 @@ impl ColumnValueOps for Variant {
         }
     }
 
-    fn tests_true(&self) -> bool {
-        match self {
-            &Variant::Null => false,
-            &Variant::Bytes(ref bytes) => !bytes.is_empty(),
-            &Variant::StringLiteral(ref s) => !s.is_empty(),
-            &Variant::SignedInteger(n) => n != 0,
-            &Variant::UnsignedInteger(n) => n != 0,
-            &Variant::Float(n) => *n != 0.0
-        }
-    }
-
     fn to_3vl(&self) -> i8 {
+        fn b(value: bool) -> i8 { if value { 1 } else { -1 } }
+
         match self {
             &Variant::Null => 0,
-            v => if self.tests_true() { 1 } else { -1 }
+            &Variant::Bytes(ref bytes) => b(!bytes.is_empty()),
+            &Variant::StringLiteral(ref s) => b(!s.is_empty()),
+            &Variant::SignedInteger(n) => b(n != 0),
+            &Variant::UnsignedInteger(n) => b(n != 0),
+            &Variant::Float(n) => b(*n != 0.0)
         }
     }
 
