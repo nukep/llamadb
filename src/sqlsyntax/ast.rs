@@ -136,7 +136,7 @@ pub struct CreateTableColumnConstraint {
     pub constraint: CreateTableColumnConstraintType
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum CreateTableColumnConstraintType {
     PrimaryKey,
     Unique,

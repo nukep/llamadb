@@ -6,7 +6,7 @@
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 
-use columnvalueops::ColumnValueOps;
+use columnvalueops::{ColumnValueOps, ColumnValueOpsExt};
 use databaseinfo::{DatabaseInfo, TableInfo, ColumnInfo};
 use databasestorage::{Group, DatabaseStorage};
 use identifier::Identifier;
@@ -84,21 +84,33 @@ impl<'a> Group for ScanGroup<'a> {
             let mut key_offset = 8;
 
             let v: Vec<Variant> = columns.iter().map(|column| {
-                let size = match column.dbtype.get_fixed_length() {
-                    Some(l) => l as usize,
-                    None => {
-                        let l = variable_lengths[variable_length_offset];
-                        variable_length_offset += 1;
-                        l as usize
-                    }
+                let is_null = if column.nullable {
+                    let flag = raw_key[key_offset];
+                    key_offset += 1;
+                    flag != 0
+                } else {
+                    false
                 };
 
-                let bytes = &raw_key[key_offset..key_offset + size];
+                if is_null {
+                    ColumnValueOpsExt::null()
+                } else {
+                    let size = match column.dbtype.get_fixed_length() {
+                        Some(l) => l as usize,
+                        None => {
+                            let l = variable_lengths[variable_length_offset];
+                            variable_length_offset += 1;
+                            l as usize
+                        }
+                    };
 
-                trace!("from bytes: {:?}, {:?}", column.dbtype, bytes);
-                let value = ColumnValueOps::from_bytes(column.dbtype, bytes.into_cow()).unwrap();
-                key_offset += size;
-                value
+                    let bytes = &raw_key[key_offset..key_offset + size];
+
+                    trace!("from bytes: {:?}, {:?}", column.dbtype, bytes);
+                    let value = ColumnValueOps::from_bytes(column.dbtype, bytes.into_cow()).unwrap();
+                    key_offset += size;
+                    value
+                }
             }).collect();
 
             v.into_cow()
@@ -160,10 +172,15 @@ impl TempDb {
 
             let dbtype = try!(DbType::from_identifier(&type_name, type_array_size).ok_or(format!("{} is not a valid column type", type_name)));
 
+            let nullable = column.constraints.iter().any(|c| {
+                c.constraint == ast::CreateTableColumnConstraintType::Nullable
+            });
+
             Ok(table::Column {
                 offset: i as u32,
                 name: name,
-                dbtype: dbtype
+                dbtype: dbtype,
+                nullable: nullable
             })
         }).collect();
 
@@ -186,8 +203,8 @@ impl TempDb {
 
         let mut table = try!(self.get_table_mut(stmt.table));
 
-        let column_types: Vec<DbType> = table.get_columns().iter().map(|c| {
-            c.dbtype
+        let column_types: Vec<(DbType, bool)> = table.get_columns().iter().map(|c| {
+            (c.dbtype, c.nullable)
         }).collect();
 
         let ast_index_to_column_index: Vec<u32> = match stmt.into_columns {
@@ -220,7 +237,7 @@ impl TempDb {
                         return Err(format!("INSERT value contains wrong amount of columns"));
                     }
 
-                    let iter = column_types.iter().enumerate().map(|(i, &dbtype)| {
+                    let iter = column_types.iter().enumerate().map(|(i, &(dbtype, nullable))| {
                         let ast_index = column_index_to_ast_index.get(&i);
 
                         match ast_index {
@@ -228,12 +245,13 @@ impl TempDb {
                                 // TODO - allocate buffer outside of loop
                                 let mut buf = Vec::new();
                                 let expr = &row[*ast_index];
-                                ast_expression_to_data(expr, dbtype, &mut buf);
-                                Cow::Owned(buf)
+                                let is_null = ast_expression_to_data(expr, dbtype, nullable, &mut buf);
+                                (Cow::Owned(buf), is_null)
                             },
                             None => {
                                 // use default value for column type
-                                dbtype.get_default()
+                                let is_null = if nullable { Some(true) } else { None };
+                                (dbtype.get_default(), is_null)
                             }
                         }
                     });
@@ -313,11 +331,14 @@ impl TempDb {
     }
 }
 
-fn ast_expression_to_data(expr: &ast::Expression, column_type: DbType, buf: &mut Vec<u8>) {
+fn ast_expression_to_data(expr: &ast::Expression, column_type: DbType, nullable: bool, buf: &mut Vec<u8>) -> Option<bool> {
     use sqlsyntax::ast::Expression::*;
     use std::borrow::IntoCow;
 
     let value: Variant = match expr {
+        &Null => {
+            ColumnValueOpsExt::null()
+        },
         &StringLiteral(ref s) => {
             let r: &str = &s;
             ColumnValueOps::from_string_literal(r.into_cow()).unwrap()
@@ -329,6 +350,17 @@ fn ast_expression_to_data(expr: &ast::Expression, column_type: DbType, buf: &mut
         _ => unimplemented!()
     };
 
-    let bytes = value.to_bytes(column_type).unwrap();
-    buf.push_all(&bytes);
+    match (value.is_null(), nullable) {
+        (true, true) => Some(true),
+        (true, false) => {
+            // TODO: return error
+            unimplemented!()
+        },
+        (false, nullable) => {
+            let bytes = value.to_bytes(column_type).unwrap();
+            buf.push_all(&bytes);
+
+            if nullable { Some(false) } else { None }
+        }
+    }
 }

@@ -36,6 +36,7 @@ pub struct Column {
     pub offset: u32,
     pub name: Identifier,
     pub dbtype: DbType,
+    pub nullable: bool
 }
 
 impl TableInfo for Table {
@@ -63,7 +64,7 @@ impl TableInfo for Table {
 impl Table {
     /// rowid is automatically added, and is not included as a specified column
     pub fn insert_row<'a, I>(&mut self, column_data: I) -> Result<(), UpdateError>
-    where I: ExactSizeIterator, I: Iterator<Item = Cow<'a, [u8]>>
+    where I: ExactSizeIterator, I: Iterator<Item = (Cow<'a, [u8]>, Option<bool>)>
     {
         // TODO - remove Cow in favor of yielding either `u8` slices or `u8` iterators
 
@@ -80,25 +81,50 @@ impl Table {
 
         trace!("columns: {:?}", self.columns);
 
-        for (column, data_cow) in self.columns.iter().zip(column_data) {
+        for (column, (data_cow, is_null)) in self.columns.iter().zip(column_data) {
             let data: &[u8] = &*data_cow;
 
             trace!("column data for {}: {:?}", column.name, data);
 
             let len = data.len() as u64;
 
-            if column.dbtype.is_valid_length(len) {
-                if column.dbtype.is_variable_length() {
-                    let mut buf = [0; 8];
-                    byteutils::write_udbinteger(len, &mut buf);
-                    lengths.push_all(&buf);
-                }
+            let append_data = match is_null {
+                Some(true) => {
+                    assert_eq!(len, 0);
+                    key.push(1);
 
-                key.push_all(data);
-            } else {
-                return Err(UpdateError::ValidationError {
-                    column_name: column.name.clone()
-                });
+                    false
+                },
+                Some(false) => {
+                    key.push(0);
+
+                    true
+                },
+                None => true
+            };
+
+            if append_data {
+                if column.dbtype.is_valid_length(len) {
+                    if column.dbtype.is_variable_length() {
+                        let mut buf = [0; 8];
+                        byteutils::write_udbinteger(len, &mut buf);
+                        lengths.push_all(&buf);
+                    }
+
+                    assert_eq!(column.nullable, is_null.is_some());
+
+                    if let Some(is_null) = is_null {
+                        if is_null {
+                        }
+
+                    }
+
+                    key.push_all(data);
+                } else {
+                    return Err(UpdateError::ValidationError {
+                        column_name: column.name.clone()
+                    });
+                }
             }
         }
 
