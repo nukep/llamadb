@@ -250,35 +250,34 @@ impl ColumnValueOps for Variant {
         }
     }
 
-    fn equals(&self, rhs: &Self) -> Self {
-        match (self, rhs) {
-            (&Variant::Null, _) | (_, &Variant::Null) => {
-                // NULL does not compare.
-                Variant::Null
-            },
-            (&Variant::StringLiteral(ref l), &Variant::StringLiteral(ref r)) => {
-                from_bool(l == r)
-            },
-            (&Variant::UnsignedInteger(l), &Variant::UnsignedInteger(r)) => {
-                from_bool(l == r)
-            },
-            _ => from_bool(false)
-        }
-    }
-
-    fn not_equals(&self, rhs: &Self) -> Self {
-        match (self, rhs) {
-            (&Variant::Null, _) | (_, &Variant::Null) => {
-                // NULL does not compare.
-                Variant::Null
-            },
-            (&Variant::StringLiteral(ref l), &Variant::StringLiteral(ref r)) => {
-                from_bool(l != r)
-            },
-            (&Variant::UnsignedInteger(l), &Variant::UnsignedInteger(r)) => {
-                from_bool(l != r)
-            },
-            _ => from_bool(true)
+    // None: self or rhs is NULL, or comparison is otherwise invalid
+    // -1: self < rhs
+    // 0: self == rhs
+    // 1: self > rhs
+    fn compare(&self, rhs: &Self) -> Option<i8> {
+        let dbtype = self.get_dbtype();
+        if let Some(r) = rhs.clone().cast(dbtype) {
+            match (self, &r) {
+                (&Variant::Null, _) | (_, &Variant::Null) => None,
+                (&Variant::UnsignedInteger(l), &Variant::UnsignedInteger(r)) => {
+                    Some(if l < r { -1 } else if l > r { 1 } else { 0 })
+                },
+                (&Variant::SignedInteger(l), &Variant::SignedInteger(r)) => {
+                    Some(if l < r { -1 } else if l > r { 1 } else { 0 })
+                },
+                (&Variant::Float(l), &Variant::Float(r)) => {
+                    Some(if l < r { -1 } else if l > r { 1 } else { 0 })
+                },
+                (&Variant::Bytes(ref l), &Variant::Bytes(ref r)) => {
+                    Some(if l < r { -1 } else if l > r { 1 } else { 0 })
+                },
+                (&Variant::StringLiteral(ref l), &Variant::StringLiteral(ref r)) => {
+                    Some(if l < r { -1 } else if l > r { 1 } else { 0 })
+                },
+                _ => unreachable!()
+            }
+        } else {
+            None
         }
     }
 

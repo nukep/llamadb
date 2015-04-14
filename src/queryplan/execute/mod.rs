@@ -208,6 +208,10 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
                 Ok(match op {
                     BinaryOp::Equal => l.equals(&r),
                     BinaryOp::NotEqual => l.not_equals(&r),
+                    BinaryOp::LessThan => l.less_than(&r),
+                    BinaryOp::LessThanOrEqual => l.less_than_or_equal(&r),
+                    BinaryOp::GreaterThan => l.greater_than(&r),
+                    BinaryOp::GreaterThanOrEqual => l.greater_than_or_equal(&r),
                     BinaryOp::And => l.and(&r),
                     BinaryOp::Or => l.or(&r),
                     BinaryOp::Concatenate => l.concat(&r),
