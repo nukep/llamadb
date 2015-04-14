@@ -28,6 +28,7 @@ pub enum Expression {
     IdentMember(String, String),
     StringLiteral(String),
     Number(String),
+    Null,
     /// name(argument1, argument2, argument3...)
     FunctionCall { name: String, arguments: Vec<Expression> },
     /// name(*)

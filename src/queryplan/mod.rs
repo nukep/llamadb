@@ -534,6 +534,9 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
                     Err(s) => Err(QueryPlanCompileError::BadNumberLiteral(s.into_owned()))
                 }
             },
+            ast::Expression::Null => {
+                Ok(SExpression::Value(ColumnValueOps::null()))
+            },
             ast::Expression::Subquery(subquery) => {
                 let source_id = self.new_source_id();
 

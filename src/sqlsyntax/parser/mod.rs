@@ -270,6 +270,8 @@ impl Expression {
             } else {
                 Err(tokens.expecting("expression or subquery after ("))
             }
+        } else if tokens.pop_if_token(&Token::Null) {
+            Ok(Expression::Null)
         } else if let Some(ident) = tokens.pop_if_ident() {
             if tokens.pop_if_token(&Token::LeftParen) {
                 // Function call
