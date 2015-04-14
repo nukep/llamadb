@@ -303,6 +303,7 @@ impl Expression {
     }
 }
 
+#[allow(dead_code)]
 struct AsAlias;
 
 impl Rule for AsAlias {
@@ -684,6 +685,7 @@ impl Rule for Statement {
     }
 }
 
+#[allow(dead_code)]
 struct Statements;
 
 impl Rule for Statements {

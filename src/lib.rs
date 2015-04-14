@@ -1,5 +1,4 @@
 #![feature(collections, into_cow)]
-#![allow(unused_variables, dead_code)]
 
 #[macro_use]
 extern crate log;

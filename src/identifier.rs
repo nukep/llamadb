@@ -35,19 +35,6 @@ impl Identifier {
             None => None
         }
     }
-
-    /// Converts a string into an identifier without validation.
-    /// This should only be called if you're _really_ sure the string is
-    /// normalized.
-    pub unsafe fn from_string(value: String) -> Identifier {
-        debug_assert_eq!(normalize(&value), Some(value.clone()));
-
-        Identifier {
-            value: value
-        }
-    }
-
-    pub fn into_inner(self) -> String { self.value }
 }
 
 impl Deref for Identifier {

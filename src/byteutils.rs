@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 pub fn read_u16_le(buf: &[u8]) -> u16 {
     assert_eq!(buf.len(), 2);
 

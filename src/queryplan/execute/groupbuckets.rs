@@ -50,7 +50,7 @@ impl<ColumnValue: Clone + Eq + Hash + 'static> Iterator for IntoIter<ColumnValue
     type Item = GroupBucket<ColumnValue>;
 
     fn next(&mut self) -> Option<GroupBucket<ColumnValue>> {
-        self.i.next().map(|(k, v)| v)
+        self.i.next().map(|(_k, v)| v)
     }
 }
 

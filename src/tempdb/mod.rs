@@ -244,7 +244,7 @@ impl TempDb {
 
                 Ok(ExecuteStatementResponse::Inserted(count))
             },
-            ast::InsertSource::Select(s) => unimplemented!()
+            ast::InsertSource::Select(_s) => unimplemented!()
         }
     }
 

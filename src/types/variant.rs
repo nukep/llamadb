@@ -220,7 +220,7 @@ impl ColumnValueOps for Variant {
                     Err(()) => None
                 }
             },
-            (Variant::Float(float), DbType::Integer { signed, bytes }) => {
+            (Variant::Float(float), DbType::Integer { signed, .. }) => {
                 // truncates
                 if signed {
                     Some(Variant::SignedInteger(*float as i64))
@@ -359,8 +359,8 @@ impl ColumnValueOps for Variant {
         let dbtype = self.get_dbtype();
         if let Some(r) = rhs.clone().cast(dbtype) {
             match (self, r) {
-                (&Variant::UnsignedInteger(l), Variant::UnsignedInteger(0)) => Variant::Null,
-                (&Variant::SignedInteger(l), Variant::SignedInteger(0)) => Variant::Null,
+                (&Variant::UnsignedInteger(_), Variant::UnsignedInteger(0)) => Variant::Null,
+                (&Variant::SignedInteger(_), Variant::SignedInteger(0)) => Variant::Null,
 
                 (&Variant::UnsignedInteger(l), Variant::UnsignedInteger(r)) => {
                     Variant::UnsignedInteger(l / r)
