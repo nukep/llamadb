@@ -1,4 +1,4 @@
-#![feature(collections)]
+#![feature(collections, std_misc)]
 
 #[macro_use]
 extern crate log;
@@ -9,6 +9,7 @@ extern crate linenoise;
 extern crate llamadb;
 
 use std::io::Write;
+use std::time::duration::Duration;
 
 mod prettyselect;
 use prettyselect::pretty_select;
@@ -81,20 +82,30 @@ fn execute_statement(out: &mut Write, db: &mut llamadb::tempdb::TempDb, statemen
 {
     use llamadb::tempdb::ExecuteStatementResponse;
 
-    let result = match db.execute_statement(statement) {
+    let mut execute_result = None;
+
+    let duration = Duration::span(|| {
+        execute_result = Some(db.execute_statement(statement));
+    });
+
+    let duration_string = format!("{:.3}s", (duration.num_milliseconds() as f32) / 1000.0);
+
+    let result = match execute_result.unwrap() {
         Ok(r) => r,
         Err(e) => return Err(format!("execution error: {}", e))
     };
 
     let write_result = match result {
         ExecuteStatementResponse::Created => {
-            writeln!(out, "Created.")
+            writeln!(out, "Created ({}).", duration_string)
         },
         ExecuteStatementResponse::Inserted(rows) => {
-            writeln!(out, "{} rows inserted.", rows)
+            writeln!(out, "{} rows inserted ({}).", rows, duration_string)
         },
         ExecuteStatementResponse::Select { column_names, rows } => {
-            pretty_select(out, &column_names, rows, 32)
+            pretty_select(out, &column_names, rows, 32).and_then(|row_count| {
+                writeln!(out, "{} rows selected ({}).", row_count, duration_string)
+            })
         },
         ExecuteStatementResponse::Explain(plan) => {
             writeln!(out, "{}", plan)

@@ -8,7 +8,7 @@ fn string_width(value: &str) -> usize {
 }
 
 pub fn pretty_select<I, S>(out: &mut Write, column_names: &[String], mut iter: I, page_length: usize)
--> Result<(), io::Error>
+-> Result<u64, io::Error>
 where I: Iterator<Item=Box<[S]>>, S: ToString
 {
     debug!("pretty_select");
@@ -58,7 +58,8 @@ where I: Iterator<Item=Box<[S]>>, S: ToString
         try!(print_headers(out, &widths, padding, column_names));
         try!(write!(out, "\n"));
     }
-    writeln!(out, "{} rows selected.", row_count)
+    
+    Ok(row_count as u64)
 }
 
 fn print_headers(out: &mut Write, widths: &[usize], padding: usize, column_names: &[String])
