@@ -145,14 +145,14 @@ To get the query execution plan for a query, prepend the query with the `EXPLAIN
 EXPLAIN SELECT name, age FROM person WHERE age >= 18;
 ```
 ```lisp
-(scan `person` :source_id 0
+(scan `person` :source-id 0
   (if
     (>=
-      (column-field :source_id 0 :column_offset 2)
+      (column-field :source-id 0 :column-offset 2)
       18)
     (yield
-      (column-field :source_id 0 :column_offset 1)
-      (column-field :source_id 0 :column_offset 2))))
+      (column-field :source-id 0 :column-offset 1)
+      (column-field :source-id 0 :column-offset 2))))
 ```
 
 The above syntax more or less matches the query plan's internal data structure.

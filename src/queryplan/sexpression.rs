@@ -73,19 +73,19 @@ where <DB as DatabaseInfo>::Table: 'a
 
         match self {
             &SExpression::Scan { table, source_id, ref yield_fn } => {
-                try!(writeln!(f, "(scan `{}` :source_id {}", table.get_name(), source_id));
+                try!(writeln!(f, "(scan `{}` :source-id {}", table.get_name(), source_id));
                 try!(yield_fn.format(f, indent + 1));
                 write!(f, ")")
             },
             &SExpression::Map { source_id, ref yield_in_fn, ref yield_out_fn } => {
-                try!(writeln!(f, "(map :source_id {}", source_id));
+                try!(writeln!(f, "(map :source-id {}", source_id));
                 try!(yield_in_fn.format(f, indent + 1));
                 try!(writeln!(f, ""));
                 try!(yield_out_fn.format(f, indent + 1));
                 write!(f, ")")
             },
             &SExpression::TempGroupBy { source_id, ref yield_in_fn, ref group_by_values, ref yield_out_fn } => {
-                try!(writeln!(f, "(temp-group-by :source_id {}", source_id));
+                try!(writeln!(f, "(temp-group-by :source-id {}", source_id));
                 try!(yield_in_fn.format(f, indent + 1));
                 try!(writeln!(f, ""));
                 write_indent!(indent+1);
@@ -107,7 +107,7 @@ where <DB as DatabaseInfo>::Table: 'a
                 write!(f, ")")
             },
             &SExpression::ColumnField { source_id, column_offset } => {
-                write!(f, "(column-field :source_id {} :column_offset {})", source_id, column_offset)
+                write!(f, "(column-field :source-id {} :column-offset {})", source_id, column_offset)
             },
             &SExpression::If { ref predicate, ref yield_fn } => {
                 try!(writeln!(f, "(if "));
@@ -124,12 +124,12 @@ where <DB as DatabaseInfo>::Table: 'a
                 write!(f, ")")
             },
             &SExpression::AggregateOp { ref op, source_id, ref value } => {
-                try!(writeln!(f, "({} :source_id {} ", op.name(), source_id));
+                try!(writeln!(f, "({} :source-id {} ", op.name(), source_id));
                 try!(value.format(f, indent + 1));
                 write!(f, ")")
             },
             &SExpression::CountAll { source_id } => {
-                write!(f, "(count-all :source_id {})", source_id)
+                write!(f, "(count-all :source-id {})", source_id)
             },
             &SExpression::Value(ref v) => {
                 write!(f, "{}", v)
