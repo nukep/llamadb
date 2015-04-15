@@ -275,12 +275,10 @@ impl TempDb {
         let mut rows = Vec::new();
 
         let execute = ExecuteQueryPlan::new(self);
-        let result = execute.execute_query_plan(&plan.expr, &mut |r| {
+        try!(execute.execute_query_plan(&plan.expr, &mut |r| {
             rows.push(r.to_vec().into_boxed_slice());
             Ok(())
-        });
-
-        trace!("{:?}", result);
+        }));
 
         let column_names: Vec<String> = plan.out_column_names.iter().map(|ident| ident.to_string()).collect();
 

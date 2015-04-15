@@ -70,16 +70,16 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
 
     // TODO: result_cb should yield a boxed array instead of a reference
     pub fn execute_query_plan<'b, 'c>(&self, expr: &SExpression<'a, Storage::Info>,
-    result_cb: &'c mut FnMut(&[<Storage::Info as DatabaseInfo>::ColumnValue]) -> Result<(), ()>)
-    -> Result<(), ()>
+    result_cb: &'c mut FnMut(&[<Storage::Info as DatabaseInfo>::ColumnValue]) -> Result<(), String>)
+    -> Result<(), String>
     {
         self.execute(expr, result_cb, None)
     }
 
     fn execute<'b, 'c>(&self, expr: &SExpression<'a, Storage::Info>,
-        result_cb: &'c mut FnMut(&[<Storage::Info as DatabaseInfo>::ColumnValue]) -> Result<(), ()>,
+        result_cb: &'c mut FnMut(&[<Storage::Info as DatabaseInfo>::ColumnValue]) -> Result<(), String>,
         source: Option<&Source<'b, <Storage::Info as DatabaseInfo>::ColumnValue>>)
-    -> Result<(), ()>
+    -> Result<(), String>
     {
         match expr {
             &SExpression::Scan { table, source_id, ref yield_fn } => {
@@ -147,11 +147,11 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
                 Ok(())
             },
             &SExpression::Yield { ref fields } => {
-                let columns: Result<Vec<_>, ()>;
+                let columns: Result<Vec<_>, _>;
                 columns = fields.iter().map(|e| self.resolve_value(e, source)).collect();
                 match columns {
                     Ok(columns) => result_cb(&columns),
-                    Err(()) => Err(())
+                    Err(e) => Err(e)
                 }
             },
             &SExpression::If { ref predicate, ref yield_fn } => {
@@ -168,15 +168,14 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
             &SExpression::AggregateOp { .. } |
             &SExpression::CountAll { .. } |
             &SExpression::Value(..) => {
-                // these expressions cannot contain yieldable rows.
-                Err(())
+                Err(format!("encountered expression that cannot yield rows"))
             }
         }
     }
 
     fn resolve_value<'b>(&self, expr: &SExpression<'a, Storage::Info>,
         source: Option<&Source<'b, <Storage::Info as DatabaseInfo>::ColumnValue>>)
-    -> Result<<Storage::Info as DatabaseInfo>::ColumnValue, ()>
+    -> Result<<Storage::Info as DatabaseInfo>::ColumnValue, String>
     {
         match expr {
             &SExpression::Value(ref v) => Ok(v.clone()),
@@ -196,7 +195,7 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
                                     None => Ok(ColumnValueOpsExt::null())
                                 }
                             },
-                            None => Err(())
+                            None => Err(format!("ColumnField: source id is not a valid row or group: {}", source_id))
                         }
                     }
                 }
@@ -241,7 +240,7 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
 
                         Ok(op_functor.finish())
                     },
-                    None => Err(())
+                    None => Err(format!("AggregateOp: source id is not a valid group: {}", source_id))
                 }
             },
             &SExpression::CountAll { source_id } => {
@@ -250,7 +249,7 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
                         let count = group.count();
                         Ok(ColumnValueOps::from_u64(count))
                     },
-                    None => Err(())
+                    None => Err(format!("CountAll: source id is not a valid group: {}", source_id))
                 }
             },
             &SExpression::Map { source_id, ref yield_in_fn, ref yield_out_fn } => {
@@ -280,10 +279,15 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
 
                     self.resolve_value(yield_out_fn, Some(&new_source))
                 } else {
-                    Err(())
+                    Err(format!("subquery must yield exactly one row"))
                 }
             },
-            _ => Err(())
+            &SExpression::Scan { .. } |
+            &SExpression::TempGroupBy { .. } |
+            &SExpression::Yield { .. } | 
+            &SExpression::If { .. } => {
+                Err(format!("encounted expression that cannot resolve to a single value"))
+            }
         }
     }
 }
