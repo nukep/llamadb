@@ -3,7 +3,6 @@ use types::DbType;
 use databaseinfo::{ColumnInfo, TableInfo};
 use identifier::Identifier;
 use std::collections::BTreeSet;
-use std::borrow::Cow;
 use std::fmt;
 
 pub enum UpdateError {
@@ -63,11 +62,9 @@ impl TableInfo for Table {
 
 impl Table {
     /// rowid is automatically added, and is not included as a specified column
-    pub fn insert_row<'a, I>(&mut self, column_data: I) -> Result<(), UpdateError>
-    where I: ExactSizeIterator, I: Iterator<Item = (Cow<'a, [u8]>, Option<bool>)>
+    pub fn insert_row<I>(&mut self, column_data: I) -> Result<(), UpdateError>
+    where I: ExactSizeIterator, I: Iterator<Item = (Box<[u8]>, Option<bool>)>
     {
-        // TODO - remove Cow in favor of yielding either `u8` slices or `u8` iterators
-
         assert_eq!(self.columns.len(), column_data.len());
 
         let mut key: Vec<u8> = Vec::new();
@@ -81,8 +78,8 @@ impl Table {
 
         trace!("columns: {:?}", self.columns);
 
-        for (column, (data_cow, is_null)) in self.columns.iter().zip(column_data) {
-            let data: &[u8] = &*data_cow;
+        for (column, (data_box, is_null)) in self.columns.iter().zip(column_data) {
+            let data: &[u8] = &data_box;
 
             trace!("column data for {}: {:?}", column.name, data);
 

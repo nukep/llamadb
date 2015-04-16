@@ -76,6 +76,12 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
         self.execute(expr, result_cb, None)
     }
 
+    pub fn execute_expression(&self, expr: &SExpression<'a, Storage::Info>)
+    -> Result<<Storage::Info as DatabaseInfo>::ColumnValue, String>
+    {
+        self.resolve_value(expr, None)
+    }
+
     fn execute<'b, 'c>(&self, expr: &SExpression<'a, Storage::Info>,
         result_cb: &'c mut FnMut(&[<Storage::Info as DatabaseInfo>::ColumnValue]) -> Result<(), String>,
         source: Option<&Source<'b, <Storage::Info as DatabaseInfo>::ColumnValue>>)

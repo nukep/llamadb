@@ -108,6 +108,31 @@ where <DB as DatabaseInfo>::Table: 'a
     }
 }
 
+pub fn compile_ast_expression<'a, DB: DatabaseInfo>(db: &'a DB, expr: ast::Expression)
+-> Result<SExpression<'a, DB>, QueryPlanCompileError>
+where <DB as DatabaseInfo>::Table: 'a
+{
+    let scope = SourceScope::new(None, Vec::new(), Vec::new());
+
+    let mut source_id_to_query_id = HashMap::new();
+    let mut query_to_aggregated_source_id = HashMap::new();
+    let mut next_source_id = 0;
+    let mut next_query_id = 1;
+
+    let mut groups_info = GroupsInfo::new();
+
+    let mut compiler = QueryCompiler {
+        query_id: 0,
+        db: db,
+        source_id_to_query_id: &mut source_id_to_query_id,
+        query_to_aggregated_source_id: &mut query_to_aggregated_source_id,
+        next_source_id: &mut next_source_id,
+        next_query_id: &mut next_query_id
+    };
+
+    compiler.ast_expression_to_sexpression(expr, &scope, &mut groups_info)
+}
+
 #[derive(Debug)]
 struct GroupsInfo {
     innermost_nonaggregated_query: Option<u32>

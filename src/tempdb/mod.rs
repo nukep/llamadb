@@ -12,6 +12,7 @@ use databasestorage::{Group, DatabaseStorage};
 use identifier::Identifier;
 use types::{DbType, Variant};
 use sqlsyntax::ast;
+use queryplan::{self, ExecuteQueryPlan, QueryPlan};
 
 mod table;
 use self::table::Table;
@@ -197,36 +198,34 @@ impl TempDb {
     }
 
     fn insert_into(&mut self, stmt: ast::InsertStatement) -> ExecuteStatementResult {
-        use std::collections::VecMap;
-
         trace!("inserting row: {:?}", stmt);
 
-        let mut table = try!(self.get_table_mut(stmt.table));
+        let table_name = stmt.table.table_name;
+        let column_types: Vec<(DbType, bool)>;
+        let ast_index_to_column_index: Vec<u32>;
 
-        let column_types: Vec<(DbType, bool)> = table.get_columns().iter().map(|c| {
-            (c.dbtype, c.nullable)
-        }).collect();
+        {
+            let table = try!(self.get_table_mut(&table_name));
 
-        let ast_index_to_column_index: Vec<u32> = match stmt.into_columns {
-            // Column names listed; map specified columns
-            Some(v) => try!(v.into_iter().map(|column_name| {
-                let ident = Identifier::new(&column_name).unwrap();
-                match table.find_column_by_name(&ident) {
-                    Some(column) => Ok(column.get_offset()),
-                    None => Err(format!("column {} not in table", column_name))
-                }
-            }).collect()),
-            // No column names are listed; map all columns
-            None => (0..table.get_column_count()).collect()
-        };
+            column_types = table.get_columns().iter().map(|c| {
+                (c.dbtype, c.nullable)
+            }).collect();
 
-        trace!("ast_index_to_column_index: {:?}", ast_index_to_column_index);
+            ast_index_to_column_index = match stmt.into_columns {
+                // Column names listed; map specified columns
+                Some(v) => try!(v.into_iter().map(|column_name| {
+                    let ident = Identifier::new(&column_name).unwrap();
+                    match table.find_column_by_name(&ident) {
+                        Some(column) => Ok(column.get_offset()),
+                        None => Err(format!("column {} not in table", column_name))
+                    }
+                }).collect()),
+                // No column names are listed; map all columns
+                None => (0..table.get_column_count()).collect()
+            };
 
-        let column_index_to_ast_index: VecMap<usize> = ast_index_to_column_index.iter().enumerate().map(|(ast_index, column_index)| {
-            ((*column_index) as usize, ast_index)
-        }).collect();
-
-        trace!("column_index_to_ast_index: {:?}", column_index_to_ast_index);
+            trace!("ast_index_to_column_index: {:?}", ast_index_to_column_index);
+        }
 
         match stmt.source {
             ast::InsertSource::Values(rows) => {
@@ -237,26 +236,41 @@ impl TempDb {
                         return Err(format!("INSERT value contains wrong amount of columns"));
                     }
 
-                    let iter = column_types.iter().enumerate().map(|(i, &(dbtype, nullable))| {
-                        let ast_index = column_index_to_ast_index.get(&i);
+                    let mut exprs: Vec<Option<ast::Expression>>;
+                    exprs = (0..column_types.len()).map(|_| None).collect();
 
-                        match ast_index {
-                            Some(ast_index) => {
+                    for (i, expr) in row.into_iter().enumerate() {
+                        exprs[ast_index_to_column_index[i] as usize] = Some(expr);
+                    }
+
+                    // TODO: don't allow expressions that SELECT the same table that's being inserted into
+                    let v: Vec<_> = try!({column_types.iter().zip(exprs.into_iter()).map(|(&(dbtype, nullable), expr)| {
+                        match expr {
+                            Some(expr) => {
                                 // TODO - allocate buffer outside of loop
                                 let mut buf = Vec::new();
-                                let expr = &row[*ast_index];
-                                let is_null = ast_expression_to_data(expr, dbtype, nullable, &mut buf);
-                                (Cow::Owned(buf), is_null)
+
+                                let execute = ExecuteQueryPlan::new(self);
+
+                                let sexpr = match queryplan::compile_ast_expression(self, expr).map_err(|e| format!("{}", e)) {
+                                    Ok(v) => v,
+                                    Err(e) => return Err(e)
+                                };
+                                let value = try!(execute.execute_expression(&sexpr));
+
+                                let is_null = variant_to_data(value, dbtype, nullable, &mut buf);
+                                Ok((buf.into_boxed_slice(), is_null))
                             },
                             None => {
                                 // use default value for column type
                                 let is_null = if nullable { Some(true) } else { None };
-                                (dbtype.get_default(), is_null)
+                                Ok((dbtype.get_default().into_owned().into_boxed_slice(), is_null))
                             }
                         }
-                    });
+                    }).collect()});
 
-                    try!(table.insert_row(iter).map_err(|e| e.to_string()));
+                    let mut table = try!(self.get_table_mut(&table_name));
+                    try!(table.insert_row(v.into_iter()).map_err(|e| format!("{}", e)));
                     count += 1;
                 }
 
@@ -267,8 +281,6 @@ impl TempDb {
     }
 
     fn select(&self, stmt: ast::SelectStatement) -> ExecuteStatementResult {
-        use queryplan::{ExecuteQueryPlan, QueryPlan};
-
         let plan = try!(QueryPlan::compile_select(self, stmt).map_err(|e| format!("{}", e)));
         debug!("{}", plan);
 
@@ -311,12 +323,8 @@ impl TempDb {
         }
     }
 
-    fn get_table_mut(&mut self, table: ast::Table) -> Result<&mut Table, String> {
-        if table.database_name.is_some() {
-            unimplemented!()
-        }
-
-        let table_name = try!(Identifier::new(&table.table_name).ok_or(format!("Bad table name: {}", table.table_name)));
+    fn get_table_mut(&mut self, table_name: &str) -> Result<&mut Table, String> {
+        let table_name = try!(Identifier::new(table_name).ok_or(format!("Bad table name: {}", table_name)));
 
         match self.tables.iter_mut().find(|t| t.name == table_name) {
             Some(s) => Ok(s),
@@ -329,25 +337,7 @@ impl TempDb {
     }
 }
 
-fn ast_expression_to_data(expr: &ast::Expression, column_type: DbType, nullable: bool, buf: &mut Vec<u8>) -> Option<bool> {
-    use sqlsyntax::ast::Expression::*;
-    use std::borrow::IntoCow;
-
-    let value: Variant = match expr {
-        &Null => {
-            ColumnValueOpsExt::null()
-        },
-        &StringLiteral(ref s) => {
-            let r: &str = &s;
-            ColumnValueOps::from_string_literal(r.into_cow()).unwrap()
-        },
-        &Number(ref n) => {
-            let r: &str = &n;
-            ColumnValueOps::from_number_literal(r.into_cow()).unwrap()
-        },
-        _ => unimplemented!()
-    };
-
+fn variant_to_data(value: Variant, column_type: DbType, nullable: bool, buf: &mut Vec<u8>) -> Option<bool> {
     match (value.is_null(), nullable) {
         (true, true) => Some(true),
         (true, false) => {
