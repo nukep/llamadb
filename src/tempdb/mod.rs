@@ -258,7 +258,7 @@ impl TempDb {
                                 };
                                 let value = try!(execute.execute_expression(&sexpr));
 
-                                let is_null = variant_to_data(value, dbtype, nullable, &mut buf);
+                                let is_null = try!(variant_to_data(value, dbtype, nullable, &mut buf));
                                 Ok((buf.into_boxed_slice(), is_null))
                             },
                             None => {
@@ -337,18 +337,18 @@ impl TempDb {
     }
 }
 
-fn variant_to_data(value: Variant, column_type: DbType, nullable: bool, buf: &mut Vec<u8>) -> Option<bool> {
+fn variant_to_data(value: Variant, column_type: DbType, nullable: bool, buf: &mut Vec<u8>)
+-> Result<Option<bool>, String> {
     match (value.is_null(), nullable) {
-        (true, true) => Some(true),
+        (true, true) => Ok(Some(true)),
         (true, false) => {
-            // TODO: return error
-            unimplemented!()
+            Err(format!("cannot insert NULL into column that doesn't allow NULL"))
         },
         (false, nullable) => {
             let bytes = value.to_bytes(column_type).unwrap();
             buf.push_all(&bytes);
 
-            if nullable { Some(false) } else { None }
+            Ok(if nullable { Some(false) } else { None })
         }
     }
 }
