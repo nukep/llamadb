@@ -3,7 +3,7 @@ use super::super::sexpression::AggregateOp;
 
 pub trait AggregateFunction<ColumnValue> {
     fn feed(&mut self, value: ColumnValue);
-    fn finish(&mut self) -> ColumnValue;
+    fn finish(self: Box<Self>) -> ColumnValue;
 }
 
 struct Count {
@@ -18,7 +18,7 @@ impl<ColumnValue: ColumnValueOps> AggregateFunction<ColumnValue> for Count
         }
     }
 
-    fn finish(&mut self) -> ColumnValue {
+    fn finish(self: Box<Self>) -> ColumnValue {
         ColumnValueOps::from_u64(self.count)
     }
 }
@@ -36,7 +36,7 @@ impl<ColumnValue: ColumnValueOps> AggregateFunction<ColumnValue> for Avg {
         }
     }
 
-    fn finish(&mut self) -> ColumnValue {
+    fn finish(self: Box<Self>) -> ColumnValue {
         if self.count == 0 {
             ColumnValueOpsExt::null()
         } else {
@@ -58,7 +58,7 @@ impl<ColumnValue: ColumnValueOps> AggregateFunction<ColumnValue> for Sum {
         }
     }
 
-    fn finish(&mut self) -> ColumnValue {
+    fn finish(self: Box<Self>) -> ColumnValue {
         if self.count == 0 {
             ColumnValueOpsExt::null()
         } else {
