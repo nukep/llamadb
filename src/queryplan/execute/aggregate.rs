@@ -67,6 +67,52 @@ impl<ColumnValue: ColumnValueOps> AggregateFunction<ColumnValue> for Sum {
     }
 }
 
+struct Min<ColumnValue> {
+    value: Option<ColumnValue>
+}
+
+impl<ColumnValue: ColumnValueOps> AggregateFunction<ColumnValue> for Min<ColumnValue> {
+    fn feed(&mut self, value: ColumnValue) {
+        let set = !value.is_null() && if let Some(r) = self.value.as_ref() {
+            match value.compare(r) {
+                Some(-1) => true,
+                _ => false
+            }
+        } else {
+            true
+        };
+
+        if set { self.value = Some(value); }
+    }
+
+    fn finish(self: Box<Self>) -> ColumnValue {
+        self.value.unwrap_or_else(|| ColumnValueOpsExt::null())
+    }
+}
+
+struct Max<ColumnValue> {
+    value: Option<ColumnValue>
+}
+
+impl<ColumnValue: ColumnValueOps> AggregateFunction<ColumnValue> for Max<ColumnValue> {
+    fn feed(&mut self, value: ColumnValue) {
+        let set = !value.is_null() && if let Some(r) = self.value.as_ref() {
+            match value.compare(r) {
+                Some(1) => true,
+                _ => false
+            }
+        } else {
+            true
+        };
+
+        if set { self.value = Some(value); }
+    }
+
+    fn finish(self: Box<Self>) -> ColumnValue {
+        self.value.unwrap_or_else(|| ColumnValueOpsExt::null())
+    }
+}
+
 pub fn get_aggregate_function<ColumnValue>(op: AggregateOp) -> Box<AggregateFunction<ColumnValue> + 'static>
 where ColumnValue: Sized + ColumnValueOps + 'static
 {
@@ -74,7 +120,7 @@ where ColumnValue: Sized + ColumnValueOps + 'static
         AggregateOp::Count => Box::new(Count { count: 0 }),
         AggregateOp::Avg => Box::new(Avg { sum: 0.0, count: 0 }),
         AggregateOp::Sum => Box::new(Sum { sum: 0.0, count: 0 }),
-        AggregateOp::Min => unimplemented!(),
-        AggregateOp::Max => unimplemented!()
+        AggregateOp::Min => Box::new(Min { value: None }),
+        AggregateOp::Max => Box::new(Max { value: None })
     }
 }
