@@ -33,6 +33,10 @@ where <DB as DatabaseInfo>::Table: 'a
         predicate: Box<SExpression<'a, DB>>,
         yield_fn: Box<SExpression<'a, DB>>
     },
+    UnaryOp {
+        op: UnaryOp,
+        expr: Box<SExpression<'a, DB>>
+    },
     BinaryOp {
         op: BinaryOp,
         lhs: Box<SExpression<'a, DB>>,
@@ -123,6 +127,11 @@ where <DB as DatabaseInfo>::Table: 'a
                 try!(rhs.format(f, indent + 1));
                 write!(f, ")")
             },
+            &SExpression::UnaryOp { ref op, ref expr } => {
+                try!(writeln!(f, "({} ", op.name()));
+                try!(expr.format(f, indent + 1));
+                write!(f, ")")
+            },
             &SExpression::AggregateOp { ref op, source_id, ref value } => {
                 try!(writeln!(f, "({} :source-id {} ", op.name(), source_id));
                 try!(value.format(f, indent + 1));
@@ -177,6 +186,21 @@ impl BinaryOp {
             &BitAnd => "&",
             &BitOr => "|",
             &Concatenate => "concat"
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+pub enum UnaryOp {
+    Negate
+}
+
+impl UnaryOp {
+    fn name(&self) -> &'static str {
+        use self::UnaryOp::*;
+
+        match self {
+            &Negate => "negate"
         }
     }
 }

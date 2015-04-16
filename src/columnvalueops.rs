@@ -34,6 +34,7 @@ pub trait ColumnValueOps: Sized {
     fn sub(&self, rhs: &Self) -> Self;
     fn mul(&self, rhs: &Self) -> Self;
     fn div(&self, rhs: &Self) -> Self;
+    fn negate(&self) -> Self;
 }
 
 pub trait ColumnValueOpsExt: ColumnValueOps {

@@ -381,4 +381,18 @@ impl ColumnValueOps for Variant {
             self.clone()
         }
     }
+
+    fn negate(&self) -> Self {
+        // TODO: treat overflow!
+        match self {
+            &Variant::SignedInteger(n) => Variant::SignedInteger(-n),
+            &Variant::UnsignedInteger(n) => Variant::SignedInteger(-(n as i64)),
+            &Variant::Float(n) => Variant::Float(F64NoNaN::new(-*n).unwrap()),
+            &Variant::Null |
+            &Variant::Bytes(..) |
+            &Variant::StringLiteral(..) => {
+                self.clone()
+            }
+        }
+    }
 }

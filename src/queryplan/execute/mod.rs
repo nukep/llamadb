@@ -1,7 +1,7 @@
 use columnvalueops::{ColumnValueOps, ColumnValueOpsExt};
 use databaseinfo::DatabaseInfo;
 use databasestorage::{DatabaseStorage, Group};
-use super::sexpression::{BinaryOp, SExpression};
+use super::sexpression::{BinaryOp, UnaryOp, SExpression};
 
 mod aggregate;
 use self::aggregate::*;
@@ -165,6 +165,7 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
             },
             &SExpression::ColumnField { .. } |
             &SExpression::BinaryOp { .. } |
+            &SExpression::UnaryOp { .. } |
             &SExpression::AggregateOp { .. } |
             &SExpression::CountAll { .. } |
             &SExpression::Value(..) => {
@@ -219,6 +220,13 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
                     BinaryOp::Multiply => l.mul(&r),
                     BinaryOp::Divide => l.div(&r),
                     _ => unimplemented!()
+                })
+            },
+            &SExpression::UnaryOp { op, ref expr } => {
+                let e = try!(self.resolve_value(expr, source));
+
+                Ok(match op {
+                    UnaryOp::Negate => e.negate()
                 })
             },
             &SExpression::AggregateOp { op, source_id, ref value } => {
@@ -284,7 +292,7 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
             },
             &SExpression::Scan { .. } |
             &SExpression::TempGroupBy { .. } |
-            &SExpression::Yield { .. } | 
+            &SExpression::Yield { .. } |
             &SExpression::If { .. } => {
                 Err(format!("encounted expression that cannot resolve to a single value"))
             }

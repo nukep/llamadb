@@ -512,6 +512,14 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
                     column_offset: column_offset
                 })
             },
+            ast::Expression::UnaryOp { expr, op } => {
+                let e = try!(self.ast_expression_to_sexpression(*expr, scope, groups_info));
+
+                Ok(SExpression::UnaryOp {
+                    op: ast_unaryop_to_sexpression_unaryop(op),
+                    expr: Box::new(e)
+                })
+            },
             ast::Expression::BinaryOp { lhs, rhs, op } => {
                 let l = try!(self.ast_expression_to_sexpression(*lhs, scope, groups_info));
                 let r = try!(self.ast_expression_to_sexpression(*rhs, scope, groups_info));
@@ -620,8 +628,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
                     }
                     _ => Err(QueryPlanCompileError::AggregateAllMustBeCount(ident))
                 }
-            },
-            e => panic!("unimplemented: {:?}", e)
+            }
         }
     }
 }
@@ -711,6 +718,12 @@ fn ast_binaryop_to_sexpression_binaryop(ast: ast::BinaryOp) -> BinaryOp {
         ast::BinaryOp::BitAnd => BinaryOp::BitAnd,
         ast::BinaryOp::BitOr => BinaryOp::BitOr,
         ast::BinaryOp::Concatenate => BinaryOp::Concatenate,
+    }
+}
+
+fn ast_unaryop_to_sexpression_unaryop(ast: ast::UnaryOp) -> UnaryOp {
+    match ast {
+        ast::UnaryOp::Negate => UnaryOp::Negate,
     }
 }
 
