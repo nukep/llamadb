@@ -45,9 +45,9 @@ impl ColumnValueOps for Variant {
 
     fn from_number_literal(s: Cow<str>) -> Result<Variant, Cow<str>> {
         if let Ok(number) = s.parse() {
-            Ok(Variant::UnsignedInteger(number))
-        } else if let Ok(number) = s.parse() {
             Ok(Variant::SignedInteger(number))
+        } else if let Ok(number) = s.parse() {
+            Ok(Variant::UnsignedInteger(number))
         } else if let Ok(number) = s.parse() {
             Ok(Variant::Float(F64NoNaN::new(number).unwrap()))
         } else {
