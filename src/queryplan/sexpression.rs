@@ -184,7 +184,6 @@ impl BinaryOp {
 #[derive(Copy, Clone)]
 pub enum AggregateOp {
     Count,
-    First,
     Avg,
     Sum,
     Min,
@@ -197,7 +196,6 @@ impl AggregateOp {
 
         match self {
             &Count => "count",
-            &First => "first",
             &Avg => "avg",
             &Sum => "sum",
             &Min => "min",

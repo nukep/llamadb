@@ -23,27 +23,6 @@ impl<ColumnValue: ColumnValueOps> AggregateFunction<ColumnValue> for Count
     }
 }
 
-struct First<ColumnValue> {
-    only_value: Option<ColumnValue>
-}
-
-impl<ColumnValue: ColumnValueOps> AggregateFunction<ColumnValue> for First<ColumnValue> {
-    fn feed(&mut self, value: ColumnValue) {
-        if self.only_value.is_none() {
-            self.only_value = Some(value);
-        }
-    }
-
-    fn finish(&mut self) -> ColumnValue {
-        use std::mem;
-
-        match mem::replace(&mut self.only_value, None) {
-            Some(value) => value,
-            None => ColumnValueOpsExt::null()
-        }
-    }
-}
-
 struct Avg {
     sum: f64,
     count: u64
@@ -93,9 +72,9 @@ where ColumnValue: Sized + ColumnValueOps + 'static
 {
     match op {
         AggregateOp::Count => Box::new(Count { count: 0 }),
-        AggregateOp::First => Box::new(First { only_value: None }),
         AggregateOp::Avg => Box::new(Avg { sum: 0.0, count: 0 }),
         AggregateOp::Sum => Box::new(Sum { sum: 0.0, count: 0 }),
-        _ => unimplemented!()
+        AggregateOp::Min => unimplemented!(),
+        AggregateOp::Max => unimplemented!()
     }
 }
