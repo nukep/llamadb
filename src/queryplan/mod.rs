@@ -15,7 +15,7 @@ use self::source::*;
 
 pub enum QueryPlanCompileError {
     TableDoesNotExist(Identifier),
-    /// ambiguous column name; two or more tables have a column of the same name
+    ColumnDoesNotExist(Identifier),
     AmbiguousColumnName(Identifier),
     BadIdentifier(String),
     BadStringLiteral(String),
@@ -33,6 +33,9 @@ impl fmt::Display for QueryPlanCompileError {
         match self {
             &TableDoesNotExist(ref name) => {
                 write!(f, "table does not exist: {}", name)
+            },
+            &ColumnDoesNotExist(ref name) => {
+                write!(f, "column does not exist: {}", name)
             },
             &AmbiguousColumnName(ref name) => {
                 write!(f, "ambiguous column name: {}", name)
@@ -510,8 +513,9 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
                 let column_identifier = try!(new_identifier(&s));
 
                 let (source_id, column_offset) = match scope.get_column_offset(&column_identifier) {
-                    Some(v) => v,
-                    None => return Err(QueryPlanCompileError::AmbiguousColumnName(column_identifier))
+                    GetColumnOffsetResult::One(v) => v,
+                    GetColumnOffsetResult::None => return Err(QueryPlanCompileError::ColumnDoesNotExist(column_identifier)),
+                    GetColumnOffsetResult::Ambiguous(..) => return Err(QueryPlanCompileError::AmbiguousColumnName(column_identifier))
                 };
 
                 groups_info.add_query_id(self.get_query_id_from_source_id(source_id));
@@ -526,8 +530,9 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
                 let column_identifier = try!(new_identifier(&s2));
 
                 let (source_id, column_offset) = match scope.get_table_column_offset(&table_identifier, &column_identifier) {
-                    Some(v) => v,
-                    None => return Err(QueryPlanCompileError::AmbiguousColumnName(column_identifier))
+                    GetColumnOffsetResult::One(v) => v,
+                    GetColumnOffsetResult::None => return Err(QueryPlanCompileError::ColumnDoesNotExist(column_identifier)),
+                    GetColumnOffsetResult::Ambiguous(..) => return Err(QueryPlanCompileError::AmbiguousColumnName(column_identifier))
                 };
 
                 groups_info.add_query_id(self.get_query_id_from_source_id(source_id));
