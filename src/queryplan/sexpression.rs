@@ -3,6 +3,14 @@ use databaseinfo::{DatabaseInfo, TableInfo};
 use std::fmt;
 
 #[derive(Clone)]
+pub struct IfChain<'a, DB: DatabaseInfo>
+where <DB as DatabaseInfo>::Table: 'a
+{
+    pub predicate: SExpression<'a, DB>,
+    pub yield_fn: SExpression<'a, DB>,
+}
+
+#[derive(Clone)]
 pub enum SExpression<'a, DB: DatabaseInfo>
 where <DB as DatabaseInfo>::Table: 'a
 {
@@ -30,8 +38,9 @@ where <DB as DatabaseInfo>::Table: 'a
         column_offset: u32
     },
     If {
-        predicate: Box<SExpression<'a, DB>>,
-        yield_fn: Box<SExpression<'a, DB>>
+        chains: Vec<IfChain<'a, DB>>,
+        /// Run if all predicates were false.
+        else_: Option<Box<SExpression<'a, DB>>>
     },
     UnaryOp {
         op: UnaryOp,
@@ -113,11 +122,18 @@ where <DB as DatabaseInfo>::Table: 'a
             &SExpression::ColumnField { source_id, column_offset } => {
                 write!(f, "(column-field :source-id {} :column-offset {})", source_id, column_offset)
             },
-            &SExpression::If { ref predicate, ref yield_fn } => {
-                try!(writeln!(f, "(if "));
-                try!(predicate.format(f, indent + 1));
-                try!(writeln!(f, ""));
-                try!(yield_fn.format(f, indent + 1));
+            &SExpression::If { ref chains, ref else_ } => {
+                try!(write!(f, "(if "));
+                for chain in chains {
+                    try!(writeln!(f, ""));
+                    try!(chain.predicate.format(f, indent + 1));
+                    try!(writeln!(f, ""));
+                    try!(chain.yield_fn.format(f, indent + 1));
+                }
+                if let Some(e) = else_.as_ref() {
+                    try!(writeln!(f, ""));
+                    try!(e.format(f, indent + 1));
+                }
                 write!(f, ")")
             },
             &SExpression::BinaryOp { ref op, ref lhs, ref rhs } => {

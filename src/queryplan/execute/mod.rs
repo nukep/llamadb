@@ -160,11 +160,17 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
                     Err(e) => Err(e)
                 }
             },
-            &SExpression::If { ref predicate, ref yield_fn } => {
-                let pred_result = try!(self.resolve_value(predicate, source));
+            &SExpression::If { ref chains, ref else_ } => {
+                for chain in chains {
+                    let pred_result = try!(self.resolve_value(&chain.predicate, source));
 
-                if pred_result.tests_true() {
-                    self.execute(yield_fn, result_cb, source)
+                    if pred_result.tests_true() {
+                        return self.execute(&chain.yield_fn, result_cb, source);
+                    }
+                }
+
+                if let Some(e) = else_.as_ref() {
+                    self.execute(e, result_cb, source)
                 } else {
                     Ok(())
                 }

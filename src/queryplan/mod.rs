@@ -198,8 +198,11 @@ where <DB as DatabaseInfo>::Table: 'a
     fn evaluate(self, inner_expr: SExpression<'a, DB>) -> SExpression<'a, DB> {
         let core_expr = if let Some(where_expr) = self.where_expr {
             SExpression::If {
-                predicate: Box::new(where_expr),
-                yield_fn: Box::new(inner_expr)
+                chains: vec![IfChain {
+                    predicate: where_expr,
+                    yield_fn: inner_expr
+                }],
+                else_: None
             }
         } else {
             inner_expr
@@ -337,8 +340,11 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
 
             if let Some(having_predicate) = having_predicate {
                 yield_out_fn = SExpression::If {
-                    predicate: Box::new(having_predicate),
-                    yield_fn: Box::new(yield_out_fn)
+                    chains: vec![IfChain {
+                        predicate: having_predicate,
+                        yield_fn: yield_out_fn
+                    }],
+                    else_: None
                 }
             }
 
@@ -709,11 +715,16 @@ where DB: DatabaseInfo + 'a, <DB as DatabaseInfo>::Table: 'a, F: FnMut(&mut SExp
             }
         },
         &mut SExpression::If {
-            ref mut predicate,
-            ref mut yield_fn
+            ref mut chains,
+            ref mut else_
         } => {
-            cb(predicate);
-            cb(yield_fn);
+            for chain in chains {
+                cb(&mut chain.predicate);
+                cb(&mut chain.yield_fn);
+            }
+            if let Some(e) = else_.as_mut() {
+                cb(e);
+            }
         },
         &mut SExpression::BinaryOp {
             ref mut lhs,
