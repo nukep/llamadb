@@ -461,8 +461,11 @@ impl Rule for JoinOperator {
         } else if tokens.pop_if_token(&Token::Inner) {
             try_notfirst!(tokens.pop_token_expecting(&Token::Join, "JOIN after INNER"));
             Ok(JoinOperator::Inner)
+        } else if tokens.pop_if_token(&Token::Join) {
+            // implied inner join
+            Ok(JoinOperator::Inner)
         } else {
-            Err(tokens.expecting("Join operator (LEFT or INNER)"))
+            Err(tokens.expecting("Join operator (LEFT, INNER, or JOIN)"))
         }
     }
 }
