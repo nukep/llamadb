@@ -9,8 +9,8 @@ pub struct TableOrSubquery
 pub struct SourceScope<'a>
 {
     parent: Option<&'a SourceScope<'a>>,
-    tables: Vec<TableOrSubquery>,
-    table_aliases: Vec<Identifier>
+    pub tables: Vec<TableOrSubquery>,
+    pub table_aliases: Vec<Identifier>
 }
 
 pub enum GetColumnOffsetResult {

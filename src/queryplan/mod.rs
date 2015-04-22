@@ -172,11 +172,27 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
     next_query_id: &'z mut u32
 }
 
-struct FromWhere<'a, DB: DatabaseInfo>
+enum FromWhere<'a, DB: DatabaseInfo>
 where <DB as DatabaseInfo>::Table: 'a
 {
-    tables: Vec<FromWhereTableOrSubquery<'a, DB>>,
-    where_expr: Option<SExpression<'a, DB>>
+    Cross {
+        tables: Vec<FromWhereTableOrSubquery<'a, DB>>,
+        where_expr: Option<SExpression<'a, DB>>
+    },
+    Join {
+        outer_table: FromWhereTableOrSubquery<'a, DB>,
+        joins: Vec<FromWhereJoin<'a, DB>>,
+        where_expr: Option<SExpression<'a, DB>>
+    }
+}
+
+enum FromWhereJoin<'a, DB: DatabaseInfo>
+where <DB as DatabaseInfo>::Table: 'a
+{
+    Inner {
+        table: FromWhereTableOrSubquery<'a, DB>,
+        on: SExpression<'a, DB>
+    },
 }
 
 enum FromWhereTableOrSubquery<'a, DB: DatabaseInfo>
@@ -195,37 +211,68 @@ where <DB as DatabaseInfo>::Table: 'a
 impl<'a, DB: DatabaseInfo> FromWhere<'a, DB>
 where <DB as DatabaseInfo>::Table: 'a
 {
-    fn evaluate(self, inner_expr: SExpression<'a, DB>) -> SExpression<'a, DB> {
-        let core_expr = if let Some(where_expr) = self.where_expr {
-            SExpression::If {
-                chains: vec![IfChain {
-                    predicate: where_expr,
-                    yield_fn: inner_expr
-                }],
-                else_: None
+    pub fn evaluate(self, inner_expr: SExpression<'a, DB>) -> SExpression<'a, DB> {
+        let core_expr = |where_expr| {
+            if let Some(where_expr) = where_expr {
+                SExpression::If {
+                    chains: vec![IfChain {
+                        predicate: where_expr,
+                        yield_fn: inner_expr
+                    }],
+                    else_: None
+                }
+            } else {
+                inner_expr
             }
-        } else {
-            inner_expr
         };
 
-        self.tables.into_iter().fold(core_expr, |nested_expr, x| {
-            match x {
-                FromWhereTableOrSubquery::Subquery { source_id, expr } => {
-                    SExpression::Map {
-                        source_id: source_id,
-                        yield_in_fn: Box::new(expr),
-                        yield_out_fn: Box::new(nested_expr)
+        match self {
+            FromWhere::Cross { tables, where_expr } => {
+                tables.into_iter().rev().fold(core_expr(where_expr), |nested_expr, x| {
+                    x.into_sexpr(nested_expr)
+                })
+            },
+            FromWhere::Join { outer_table, joins, where_expr } => {
+                let s = joins.into_iter().rev().fold(core_expr(where_expr), |nested_expr, join| {
+                    match join {
+                        FromWhereJoin::Inner { table, on } => {
+                            table.into_sexpr(SExpression::If {
+                                chains: vec![IfChain {
+                                    predicate: on,
+                                    yield_fn: nested_expr
+                                }],
+                                else_: None
+                            })
+                        }
                     }
-                },
-                FromWhereTableOrSubquery::Table { source_id, table } => {
-                    SExpression::Scan {
-                        source_id: source_id,
-                        table: table,
-                        yield_fn: Box::new(nested_expr)
-                    }
+                });
+
+                outer_table.into_sexpr(s)
+            }
+        }
+    }
+}
+
+impl<'a, DB: DatabaseInfo> FromWhereTableOrSubquery<'a, DB>
+where <DB as DatabaseInfo>::Table: 'a
+{
+    fn into_sexpr(self, nested_expr: SExpression<'a, DB>) -> SExpression<'a, DB> {
+        match self {
+            FromWhereTableOrSubquery::Subquery { source_id, expr } => {
+                SExpression::Map {
+                    source_id: source_id,
+                    yield_in_fn: Box::new(expr),
+                    yield_out_fn: Box::new(nested_expr)
+                }
+            },
+            FromWhereTableOrSubquery::Table { source_id, table } => {
+                SExpression::Scan {
+                    source_id: source_id,
+                    table: table,
+                    yield_fn: Box::new(nested_expr)
                 }
             }
-        })
+        }
     }
 }
 
@@ -372,70 +419,80 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
         // TODO - avoid naive nested scans when indices are available
 
         // All FROM subqueries are nested, never correlated.
-        let ast_cross_tables = match from {
-            ast::From::Cross(v) => v,
-            ast::From::Join {..} => unimplemented!()
-        };
+        match from {
+            ast::From::Cross(v) => self.from_where_cross(v, where_expr, scope, groups_info),
+            ast::From::Join { table, joins } => self.from_where_join(table, joins, where_expr, scope, groups_info)
+        }
+    }
 
-        let a: Vec<_> = try!(ast_cross_tables.into_iter().map(|ast_table_or_subquery| {
-            match ast_table_or_subquery {
-                ast::TableOrSubquery::Subquery { subquery, alias } => {
-                    let plan = {
-                        let compiler = QueryCompiler {
-                            query_id: self.new_query_id(),
-                            db: self.db,
-                            source_id_to_query_id: self.source_id_to_query_id,
-                            query_to_aggregated_source_id: self.query_to_aggregated_source_id,
-                            next_source_id: self.next_source_id,
-                            next_query_id: self.next_query_id
-                        };
-
-                        try!(compiler.compile(*subquery, scope, groups_info))
-                    };
-                    let alias_identifier = try!(new_identifier(&alias));
-
-                    let source_id = self.new_source_id();
-
-                    let s = TableOrSubquery {
-                        source_id: source_id,
-                        out_column_names: plan.out_column_names
+    fn ast_table_or_subquery_to<'b>(&mut self, ast_table_or_subquery: ast::TableOrSubquery, scope: &'b SourceScope<'b>, groups_info: &mut GroupsInfo)
+    -> Result<((TableOrSubquery, FromWhereTableOrSubquery<'a, DB>), Identifier), QueryPlanCompileError>
+    {
+        match ast_table_or_subquery {
+            ast::TableOrSubquery::Subquery { subquery, alias } => {
+                let plan = {
+                    let compiler = QueryCompiler {
+                        query_id: self.new_query_id(),
+                        db: self.db,
+                        source_id_to_query_id: self.source_id_to_query_id,
+                        query_to_aggregated_source_id: self.query_to_aggregated_source_id,
+                        next_source_id: self.next_source_id,
+                        next_query_id: self.next_query_id
                     };
 
-                    let t = FromWhereTableOrSubquery::Subquery {
-                        source_id: source_id,
-                        expr: plan.expr
-                    };
+                    try!(compiler.compile(*subquery, scope, groups_info))
+                };
+                let alias_identifier = try!(new_identifier(&alias));
 
-                    Ok(((s, t), alias_identifier))
-                },
-                ast::TableOrSubquery::Table { table, alias } => {
-                    let table_name_identifier = try!(new_identifier(&table.table_name));
-                    let table = match self.db.find_table_by_name(&table_name_identifier) {
-                        Some(table) => table,
-                        None => return Err(QueryPlanCompileError::TableDoesNotExist(table_name_identifier))
-                    };
+                let source_id = self.new_source_id();
 
-                    let alias_identifier = if let Some(alias) = alias {
-                        try!(new_identifier(&alias))
-                    } else {
-                        table_name_identifier
-                    };
+                let s = TableOrSubquery {
+                    source_id: source_id,
+                    out_column_names: plan.out_column_names
+                };
 
-                    let source_id = self.new_source_id();
+                let t = FromWhereTableOrSubquery::Subquery {
+                    source_id: source_id,
+                    expr: plan.expr
+                };
 
-                    let s = TableOrSubquery {
-                        source_id: source_id,
-                        out_column_names: table.get_column_names()
-                    };
+                Ok(((s, t), alias_identifier))
+            },
+            ast::TableOrSubquery::Table { table, alias } => {
+                let table_name_identifier = try!(new_identifier(&table.table_name));
+                let table = match self.db.find_table_by_name(&table_name_identifier) {
+                    Some(table) => table,
+                    None => return Err(QueryPlanCompileError::TableDoesNotExist(table_name_identifier))
+                };
 
-                    let t = FromWhereTableOrSubquery::Table {
-                        source_id: source_id,
-                        table: table
-                    };
+                let alias_identifier = if let Some(alias) = alias {
+                    try!(new_identifier(&alias))
+                } else {
+                    table_name_identifier
+                };
 
-                    Ok(((s, t), alias_identifier))
-                }
+                let source_id = self.new_source_id();
+
+                let s = TableOrSubquery {
+                    source_id: source_id,
+                    out_column_names: table.get_column_names()
+                };
+
+                let t = FromWhereTableOrSubquery::Table {
+                    source_id: source_id,
+                    table: table
+                };
+
+                Ok(((s, t), alias_identifier))
             }
+        }
+    }
+
+    fn from_where_cross<'b>(&mut self, ast_cross_tables: Vec<ast::TableOrSubquery>, where_expr: Option<ast::Expression>, scope: &'b SourceScope<'b>, groups_info: &mut GroupsInfo)
+    -> Result<(SourceScope<'b>, FromWhere<'a, DB>), QueryPlanCompileError>
+    {
+        let a: Vec<_> = try!(ast_cross_tables.into_iter().map(|ast_table_or_subquery| {
+            self.ast_table_or_subquery_to(ast_table_or_subquery, scope, groups_info)
         }).collect());
 
         let (tables, table_aliases): (Vec<_>, _) = a.into_iter().unzip();
@@ -450,8 +507,47 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
             None
         };
 
-        Ok((new_scope, FromWhere {
+        Ok((new_scope, FromWhere::Cross {
             tables: fromwhere_tables,
+            where_expr: where_expr
+        }))
+    }
+
+    fn from_where_join<'b>(&mut self, table: ast::TableOrSubquery, joins: Vec<ast::Join>, where_expr: Option<ast::Expression>, scope: &'b SourceScope<'b>, groups_info: &mut GroupsInfo)
+    -> Result<(SourceScope<'b>, FromWhere<'a, DB>), QueryPlanCompileError>
+    {
+        let ((source_table, fromwhere_table), alias) = try!(self.ast_table_or_subquery_to(table, scope, groups_info));
+
+        let mut new_scope = SourceScope::new(Some(scope), vec![source_table], vec![alias]);
+
+        let j = try!(joins.into_iter().map(|join| {
+            let ((source_table, fromwhere_table), alias) = try!(self.ast_table_or_subquery_to(join.table, scope, groups_info));
+
+            new_scope.tables.push(source_table);
+            new_scope.table_aliases.push(alias);
+
+            let on = try!(self.ast_expression_to_sexpression(join.on, &new_scope, groups_info));
+
+            match join.operator {
+                ast::JoinOperator::Inner => {
+                    Ok(FromWhereJoin::Inner {
+                        table: fromwhere_table,
+                        on: on
+                    })
+                },
+                ast::JoinOperator::Left => unimplemented!()
+            }
+        }).collect());
+
+        let where_expr = if let Some(where_expr) = where_expr {
+            Some(try!(self.ast_expression_to_sexpression(where_expr, &new_scope, groups_info)))
+        } else {
+            None
+        };
+
+        Ok((new_scope, FromWhere::Join {
+            outer_table: fromwhere_table,
+            joins: j,
             where_expr: where_expr
         }))
     }
