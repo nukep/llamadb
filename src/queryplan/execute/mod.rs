@@ -102,6 +102,39 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
 
                 Ok(())
             },
+            &SExpression::LeftJoin { source_id, ref yield_in_fn, ref predicate, ref yield_out_fn, ref right_rows_if_none } => {
+                let mut one_or_more_rows = false;
+
+                try!(self.execute(yield_in_fn, &mut |row| {
+                    let new_source = Source {
+                        parent: source,
+                        source_id: source_id,
+                        source_type: SourceType::Row(row)
+                    };
+
+                    let pred_result = try!(self.resolve_value(predicate, Some(&new_source)));
+
+                    if pred_result.tests_true() {
+                        one_or_more_rows = true;
+                        self.execute(yield_out_fn, result_cb, Some(&new_source))
+                    } else {
+                        Ok(())
+                    }
+                }, source));
+
+                if !one_or_more_rows {
+                    // no rows were matched
+                    let new_source = Source {
+                        parent: source,
+                        source_id: source_id,
+                        source_type: SourceType::Row(right_rows_if_none)
+                    };
+
+                    self.execute(yield_out_fn, result_cb, Some(&new_source))
+                } else {
+                    Ok(())
+                }
+            },
             &SExpression::Map { source_id, ref yield_in_fn, ref yield_out_fn } => {
                 self.execute(yield_in_fn, &mut |row| {
                     let new_source = Source {
@@ -303,6 +336,7 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
                 }
             },
             &SExpression::Scan { .. } |
+            &SExpression::LeftJoin { .. } |
             &SExpression::TempGroupBy { .. } |
             &SExpression::Yield { .. } |
             &SExpression::If { .. } => {

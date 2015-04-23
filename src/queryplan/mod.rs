@@ -193,6 +193,12 @@ where <DB as DatabaseInfo>::Table: 'a
         table: FromWhereTableOrSubquery<'a, DB>,
         on: SExpression<'a, DB>
     },
+    Left {
+        source_id: u32,
+        table: SExpression<'a, DB>,
+        on: SExpression<'a, DB>,
+        right_rows_if_none: Vec<<DB as DatabaseInfo>::ColumnValue>
+    }
 }
 
 enum FromWhereTableOrSubquery<'a, DB: DatabaseInfo>
@@ -243,6 +249,15 @@ where <DB as DatabaseInfo>::Table: 'a
                                 }],
                                 else_: None
                             })
+                        },
+                        FromWhereJoin::Left { source_id, table, on, right_rows_if_none } => {
+                            SExpression::LeftJoin {
+                                source_id: source_id,
+                                yield_in_fn: Box::new(table),
+                                predicate: Box::new(on),
+                                yield_out_fn: Box::new(nested_expr),
+                                right_rows_if_none: right_rows_if_none
+                            }
                         }
                     }
                 });
@@ -273,6 +288,27 @@ where <DB as DatabaseInfo>::Table: 'a
                 }
             }
         }
+    }
+
+    fn source_id(&self) -> u32 {
+        match self {
+            &FromWhereTableOrSubquery::Table { source_id, .. } => source_id,
+            &FromWhereTableOrSubquery::Subquery { source_id, .. } => source_id,
+        }
+    }
+
+    fn yield_all_columns(self, column_count: u32) -> SExpression<'a, DB> {
+        // TODO: remove column_count parameter, put that information in the type
+        let source_id = self.source_id();
+
+        self.into_sexpr(SExpression::Yield {
+            fields: (0..column_count).map(|column_offset| {
+                SExpression::ColumnField {
+                    source_id: source_id,
+                    column_offset: column_offset
+                }
+            }).collect()
+        })
     }
 }
 
@@ -523,19 +559,38 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
         let j = try!(joins.into_iter().map(|join| {
             let ((source_table, fromwhere_table), alias) = try!(self.ast_table_or_subquery_to(join.table, scope, groups_info));
 
-            new_scope.tables.push(source_table);
-            new_scope.table_aliases.push(alias);
-
-            let on = try!(self.ast_expression_to_sexpression(join.on, &new_scope, groups_info));
-
             match join.operator {
                 ast::JoinOperator::Inner => {
+                    new_scope.tables.push(source_table);
+                    new_scope.table_aliases.push(alias);
+
+                    let on = try!(self.ast_expression_to_sexpression(join.on, &new_scope, groups_info));
                     Ok(FromWhereJoin::Inner {
                         table: fromwhere_table,
                         on: on
                     })
                 },
-                ast::JoinOperator::Left => unimplemented!()
+                ast::JoinOperator::Left => {
+                    let source_id = self.new_source_id();
+
+                    let left_join_source_table = TableOrSubquery {
+                        source_id: source_id,
+                        out_column_names: source_table.out_column_names
+                    };
+
+                    let column_count = left_join_source_table.out_column_names.len() as u32;
+
+                    new_scope.tables.push(left_join_source_table);
+                    new_scope.table_aliases.push(alias);
+
+                    let on = try!(self.ast_expression_to_sexpression(join.on, &new_scope, groups_info));
+                    Ok(FromWhereJoin::Left {
+                        source_id: source_id,
+                        table: fromwhere_table.yield_all_columns(column_count),
+                        on: on,
+                        right_rows_if_none: (0..column_count).map(|_| ColumnValueOpsExt::null()).collect()
+                    })
+                }
             }
         }).collect());
 

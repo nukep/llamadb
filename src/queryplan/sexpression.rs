@@ -19,6 +19,13 @@ where <DB as DatabaseInfo>::Table: 'a
         source_id: u32,
         yield_fn: Box<SExpression<'a, DB>>
     },
+    LeftJoin {
+        source_id: u32,
+        yield_in_fn: Box<SExpression<'a, DB>>,
+        predicate: Box<SExpression<'a, DB>>,
+        yield_out_fn: Box<SExpression<'a, DB>>,
+        right_rows_if_none: Vec<<DB as DatabaseInfo>::ColumnValue>
+    },
     Map {
         source_id: u32,
         yield_in_fn: Box<SExpression<'a, DB>>,
@@ -89,6 +96,21 @@ where <DB as DatabaseInfo>::Table: 'a
                 try!(writeln!(f, "(scan `{}` :source-id {}", table.get_name(), source_id));
                 try!(yield_fn.format(f, indent + 1));
                 write!(f, ")")
+            },
+            &SExpression::LeftJoin { source_id, ref yield_in_fn, ref predicate, ref yield_out_fn, ref right_rows_if_none } => {
+                try!(writeln!(f, "(left-join :source-id {}", source_id));
+                try!(yield_in_fn.format(f, indent + 1));
+                try!(writeln!(f, ""));
+                try!(predicate.format(f, indent + 1));
+                try!(writeln!(f, ""));
+                try!(yield_out_fn.format(f, indent + 1));
+                try!(writeln!(f, ""));
+                write_indent!(indent + 1);
+                try!(write!(f, "(right-rows-if-none "));
+                for value in right_rows_if_none {
+                    try!(write!(f, "{} ", value));
+                }
+                write!(f, "))")
             },
             &SExpression::Map { source_id, ref yield_in_fn, ref yield_out_fn } => {
                 try!(writeln!(f, "(map :source-id {}", source_id));
