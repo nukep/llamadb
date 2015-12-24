@@ -33,7 +33,7 @@ impl fmt::Debug for RuleError {
     }
 }
 
-type RuleResult<T> = Result<T, RuleError>;
+pub type RuleResult<T> = Result<T, RuleError>;
 
 fn rule_result_not_first<T>(rule_result: RuleResult<T>) -> RuleResult<T> {
     use self::RuleError::*;

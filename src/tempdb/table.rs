@@ -71,7 +71,7 @@ impl Table {
         {
             let mut buf = [0; 8];
             byteutils::write_udbinteger(self.next_rowid, &mut buf);
-            key.push_all(&buf);
+            key.extend_from_slice(&buf);
         }
 
         let mut lengths = Vec::new();
@@ -105,7 +105,7 @@ impl Table {
                     if column.dbtype.is_variable_length() {
                         let mut buf = [0; 8];
                         byteutils::write_udbinteger(len, &mut buf);
-                        lengths.push_all(&buf);
+                        lengths.extend_from_slice(&buf);
                     }
 
                     assert_eq!(column.nullable, is_null.is_some());
@@ -116,7 +116,7 @@ impl Table {
 
                     }
 
-                    key.push_all(data);
+                    key.extend_from_slice(data);
                 } else {
                     return Err(UpdateError::ValidationError {
                         column_name: column.name.clone()

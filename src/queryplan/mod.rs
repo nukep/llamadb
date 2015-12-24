@@ -926,7 +926,7 @@ where <DB as DatabaseInfo>::Table: 'a
         let cn: Vec<_> = self.out_column_names.iter().map(|n| format!("`{}`", n)).collect();
 
         try!(writeln!(f, "query plan"));
-        try!(writeln!(f, "column names: ({})", cn.connect(", ")));
+        try!(writeln!(f, "column names: ({})", cn.join(", ")));
         self.expr.fmt(f)
     }
 }

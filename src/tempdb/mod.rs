@@ -346,7 +346,7 @@ fn variant_to_data(value: Variant, column_type: DbType, nullable: bool, buf: &mu
         },
         (false, nullable) => {
             let bytes = value.to_bytes(column_type).unwrap();
-            buf.push_all(&bytes);
+            buf.extend_from_slice(&bytes);
 
             Ok(if nullable { Some(false) } else { None })
         }
