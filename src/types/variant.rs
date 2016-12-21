@@ -2,7 +2,7 @@ use byteutils;
 use columnvalueops::ColumnValueOps;
 use types::DbType;
 use types::F64NoNaN;
-use std::borrow::{Cow, IntoCow};
+use std::borrow::Cow;
 use std::fmt;
 
 #[derive(Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
@@ -215,7 +215,7 @@ impl ColumnValueOps for Variant {
             (Variant::Bytes(bytes), v) => {
                 // every variant can be converted from their byte representation
                 let r: &[u8] = &bytes;
-                match ColumnValueOps::from_bytes(v, r.into_cow()) {
+                match ColumnValueOps::from_bytes(v, Cow::Borrowed(r)) {
                     Ok(s) => Some(s),
                     Err(()) => None
                 }

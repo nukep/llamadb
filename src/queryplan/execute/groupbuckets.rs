@@ -62,9 +62,10 @@ impl<ColumnValue: Clone + Eq + Hash + 'static> Group for GroupBucket<ColumnValue
     type ColumnValue = ColumnValue;
 
     fn get_any_row<'b>(&'b self) -> Option<Cow<'b, [ColumnValue]>> {
-        use std::borrow::IntoCow;
-
-        self.rows.iter().nth(0).map(|r| r.into_cow())
+        self.rows.iter().nth(0).map(|row| {
+            let row_ref: &[ColumnValue] = &row;
+            Cow::Borrowed(row_ref)
+        })
     }
 
     fn count(&self) -> u64 {
@@ -73,10 +74,8 @@ impl<ColumnValue: Clone + Eq + Hash + 'static> Group for GroupBucket<ColumnValue
 
     fn iter<'a>(&'a self) -> Box<Iterator<Item=Cow<'a, [ColumnValue]>> + 'a> {
         Box::new(self.rows.iter().map(|row| {
-            use std::borrow::IntoCow;
-
             let row_ref: &[ColumnValue] = &row;
-            row_ref.into_cow()
+            Cow::Borrowed(row_ref)
         }))
     }
 }
