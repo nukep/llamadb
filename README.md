@@ -1,8 +1,6 @@
 # LlamaDB
 
-[![Build Status](https://travis-ci.org/nukep/llamadb.svg?branch=master)](https://travis-ci.org/nukep/llamadb)
-
-### Fair warning: this project is inactive. 
+### Fair warning: this project is not maintained. 
 Do not use this for anything important, like... for anything. This is a database I wrote for the fun of it. It will never be production-ready.
 
 LlamaDB is a simple SQL database, written entirely in the Rust programming language.
