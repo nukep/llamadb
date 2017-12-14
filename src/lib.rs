@@ -1,4 +1,4 @@
-#![feature(into_cow, associated_type_defaults)]
+#![feature(associated_type_defaults)]
 
 #[macro_use]
 extern crate log;

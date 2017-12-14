@@ -663,7 +663,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
         groups_info: &mut GroupsInfo)
     -> Result<SExpression<'a, DB>, QueryPlanCompileError>
     {
-        use std::borrow::IntoCow;
+        use std::borrow::Cow;
 
         match ast {
             ast::Expression::Ident(s) => {
@@ -718,13 +718,13 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
                 })
             },
             ast::Expression::StringLiteral(s) => {
-                match DB::ColumnValue::from_string_literal(s.into_cow()) {
+                match DB::ColumnValue::from_string_literal(Cow::Borrowed(&s)) {
                     Ok(value) => Ok(SExpression::Value(value)),
                     Err(s) => Err(QueryPlanCompileError::BadStringLiteral(s.into_owned()))
                 }
             },
             ast::Expression::Number(s) => {
-                match DB::ColumnValue::from_number_literal(s.into_cow()) {
+                match DB::ColumnValue::from_number_literal(Cow::Borrowed(&s)) {
                     Ok(value) => Ok(SExpression::Value(value)),
                     Err(s) => Err(QueryPlanCompileError::BadNumberLiteral(s.into_owned()))
                 }
